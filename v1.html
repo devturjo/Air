@@ -1,0 +1,1317 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Air Strike Deluxe</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@300;400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --menu-bg: rgba(10, 20, 30, 0.97); /* Slightly less transparent */
+            --button-bg-start: #007bff;
+            --button-bg-end: #0056b3;
+            --button-hover-start: #008cff;
+            --button-hover-end: #0069d9;
+            --text-color: #e0e0e0;
+            --accent-color: #00e5ff;
+            --danger-color: rgba(255, 50, 50, 0.7);
+            --warning-color: rgba(255, 165, 0, 0.7);
+            --font-family: 'Roboto', sans-serif;
+            --font-title: 'Orbitron', sans-serif;
+            --vignette-color: rgba(0,0,0,0.9);
+            --altitude-warn-color: rgba(255, 0, 0, 0.85);
+            --border-color: rgba(0, 229, 255, 0.3);
+            --upgrade-bar-bg: #444;
+            --upgrade-bar-fill: var(--accent-color);
+        }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: var(--font-family); color: var(--text-color); overscroll-behavior: none; height: 100vh; width: 100vw; position: fixed; /* Prevent pull-to-refresh */ }
+        canvas { display: block; width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
+
+        /* --- UI Container & Stats --- */
+        #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; justify-content: space-between; align-items: stretch; pointer-events: none; padding: 10px; box-sizing: border-box; z-index: 5; }
+        #ui-container.active { display: flex; } /* Show when game is active */
+        #top-ui { width: 100%; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 0 5px; }
+        #stats { display: flex; flex-grow: 1; color: aliceblue; justify-content: space-between; align-items: flex-start; font-size: clamp(11px, 2.2vw, 15px); text-shadow: 1px 1px 3px #000; padding: 8px 15px; border-radius: 8px; border: 1px solid var(--border-color); backdrop-filter: blur(2px); background-color: rgba(10, 20, 30, 0.4); }
+        #player-stats { display: flex; flex-direction: column; gap: 5px; }
+        #player-stats div { display: flex; align-items: center; gap: 6px; }
+        #player-stats i { font-style: normal; color: var(--accent-color); min-width: 15px; text-align: center; }
+        #enemy-stats-container { display: flex; flex-direction: column; align-items: flex-end; font-size: clamp(9px, 1.8vw, 12px); gap: 4px; max-height: 120px; overflow-y: auto; padding-right: 5px; background-color: rgba(0, 10, 20, 0.3); padding: 5px 10px; border-radius: 5px; border: 1px solid rgba(0, 229, 255, 0.2); margin-left: 10px; text-shadow: 1px 1px 3px #000; }
+        #match-timer-display { font-family: var(--font-title); font-size: clamp(14px, 3vw, 18px); color: var(--accent-color); background-color: rgba(0, 10, 20, 0.5); padding: 8px 12px; border-radius: 5px; border: 1px solid var(--border-color); text-shadow: 1px 1px 3px #000, 0 0 5px var(--accent-color); margin-left: 10px; display: none; backdrop-filter: blur(2px); }
+
+        /* --- Menu Container --- */
+        #menu-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; background-color: var(--menu-bg); display: flex; /* Always flex when visible */ pointer-events: none; /* Default: container doesn't block */ }
+        #menu-container.hidden { display: none; } /* Hide when game starts */
+        #menu-container > div { /* Style the direct children (menu screens) */ width: 100%; height: 100%; }
+
+        /* --- Individual Menus --- */
+        .menu-screen { display: none; /* Hide menus by default */ flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; box-sizing: border-box; overflow-y: auto; opacity: 0; transform: scale(0.95); transition: opacity 0.3s ease-out, transform 0.3s ease-out; pointer-events: none; /* Individual screens block events when inactive */ }
+        .menu-screen.active { display: flex; /* Show active menu */ opacity: 1; transform: scale(1); pointer-events: auto; /* Allow interaction with active menu */ }
+        .menu-screen h1 { font-family: var(--font-title); font-size: clamp(2em, 8vw, 3em); margin-bottom: 25px; color: var(--accent-color); text-shadow: 0 0 8px var(--accent-color); }
+        .menu-screen p { font-size: clamp(0.9em, 3.5vw, 1.1em); margin-bottom: 25px; max-width: 90%; line-height: 1.6; color: #ccc; }
+        button.game-button { font-family: var(--font-title); padding: 14px 30px; font-size: clamp(1em, 4vw, 1.3em); cursor: pointer; background: linear-gradient(145deg, var(--button-bg-start), var(--button-bg-end)); color: white; border: none; border-radius: 8px; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); box-shadow: 0 5px 10px rgba(0,0,0,0.3), inset 0 -3px 5px rgba(0,0,0,0.2); transition: all 0.15s ease; pointer-events: auto; margin-top: 18px; }
+        button.game-button:hover { background: linear-gradient(145deg, var(--button-hover-start), var(--button-hover-end)); box-shadow: 0 7px 12px rgba(0,0,0,0.4), inset 0 -3px 5px rgba(0,0,0,0.3); transform: translateY(-2px); }
+        button.game-button:active { transform: translateY(1px); box-shadow: 0 3px 6px rgba(0,0,0,0.3), inset 0 -2px 4px rgba(0,0,0,0.2); }
+        button.game-button.secondary { background: linear-gradient(145deg, #5a6268, #343a40); }
+        button.game-button.secondary:hover { background: linear-gradient(145deg, #6c757d, #495057); }
+        button.game-button:disabled { background: #6c757d; cursor: not-allowed; transform: none; box-shadow: none; color: #aaa; opacity: 0.7; }
+
+        #message-box { position: absolute; bottom: 75%; left: 50%; transform: translateX(-50%); color: #ffffff !important; padding: 10px 18px; border-radius: 6px; font-size: clamp(11px, 2.5vw, 15px); display: none; z-index: 20; text-align: center; max-width: 85%; background-color: rgba(0,0,0,0.7); border: 1px solid #888; backdrop-filter: blur(2px); }
+
+        /* --- Options Menu --- */
+        .options-grid { display: grid; grid-template-columns: auto 1fr auto; gap: 15px 25px; align-items: center; max-width: 450px; width: 90%; margin-bottom: 25px; background-color: rgba(255,255,255,0.05); padding: 20px; border-radius: 8px; }
+        .options-grid label { text-align: right; font-size: clamp(0.9em, 3.2vw, 1.1em); }
+        .options-grid input[type="range"] { width: 100%; cursor: pointer; height: 8px; appearance: none; background: #555; border-radius: 4px; outline: none; }
+        .options-grid input[type="range"]::-webkit-slider-thumb { appearance: none; width: 20px; height: 20px; background: var(--accent-color); border-radius: 50%; cursor: pointer; }
+        .options-grid input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; background: var(--accent-color); border-radius: 50%; cursor: pointer; border: none; }
+        .options-grid input[type="checkbox"] { width: 22px; height: 22px; cursor: pointer; accent-color: var(--accent-color); }
+        .options-grid span { text-align: left; font-size: clamp(0.8em, 2.8vw, 1em); min-width: 35px; color: #ccc; }
+        .control-options { grid-column: 1 / -1; display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 10px; }
+        .control-options label { text-align: center; }
+        .control-options input[type="radio"] { margin-right: 5px; accent-color: var(--accent-color); }
+        #aimAssistLabel { grid-column: 1 / 2; }
+        #aimAssistCheckbox { grid-column: 2 / 3; justify-self: start; }
+        #aimAssistStrengthLabel { grid-column: 1 / 2; }
+        #aimAssistStrengthSlider { grid-column: 2 / 3; }
+        #aimAssistStrengthValue { grid-column: 3 / 4; }
+
+        /* --- Shop Menu (Simplified Upgrade Focus) --- */
+        #shop-menu h1 { margin-bottom: 15px; }
+        #shop-menu p#shop-currency { font-family: var(--font-title); color: var(--accent-color); font-size: clamp(1.1em, 4vw, 1.4em); margin-bottom: 25px; }
+        #shop-items-container { display: flex; flex-direction: column; align-items: center; gap: 15px; width: 100%; max-width: 550px; margin-bottom: 25px; }
+        .shop-upgrade-item { border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; background-color: rgba(255,255,255,0.05); width: 95%; display: flex; flex-direction: column; gap: 10px; }
+        .upgrade-header { display: flex; justify-content: space-between; align-items: center; }
+        .upgrade-header h3 { margin: 0; color: var(--accent-color); font-size: clamp(1.1em, 4.2vw, 1.3em); font-family: var(--font-title); }
+        .upgrade-level-display { font-size: clamp(0.8em, 3vw, 1em); color: #ccc; }
+        .upgrade-level-bar-container { width: 100%; height: 10px; background-color: var(--upgrade-bar-bg); border-radius: 5px; overflow: hidden; }
+        .upgrade-level-bar { height: 100%; width: 0%; /* Set by JS */ background-color: var(--upgrade-bar-fill); transition: width 0.3s ease; }
+        .upgrade-details { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .upgrade-cost { font-size: clamp(0.9em, 3.2vw, 1.1em); color: #ddd; }
+        .upgrade-button { padding: 8px 18px !important; font-size: clamp(0.9em, 3.5vw, 1.1em) !important; margin-top: 0 !important; min-width: 100px; }
+
+        /* --- Mobile Controls --- */
+        #mobile-controls { position: absolute; bottom: 0; left: 0; width: 100%; height: 170px; display: none; /* Hidden by default */ justify-content: space-between; align-items: flex-end; padding: 15px 20px; box-sizing: border-box; pointer-events: none; z-index: 6; touch-action: none; }
+        #mobile-controls.active { display: flex; pointer-events: auto; flex-direction: row; margin-bottom: 30px; } /* Show and enable when game runs */
+        #movement-control-area { height: 140px; display: flex; align-items: center; pointer-events: auto; }
+        .touch-area { width: 100px; height: 100px; border-radius: 50%; background-color: rgba(200, 220, 255, 0.1); position: relative; display: flex; justify-content: center; align-items: center; border: 2px solid rgba(200, 220, 255, 0.2); backdrop-filter: blur(2px); }
+        .touch-stick { width: 60px; height: 60px; border-radius: 50%; background-color: rgba(200, 220, 255, 0.3); position: absolute; border: 1px solid rgba(255,255,255,0.4); }
+        #action-buttons { display: flex; flex-direction: column; align-items: center; gap: 12px; pointer-events: auto; }
+        .action-button { width: 70px; height: 70px; border-radius: 50%; background-color: rgba(0, 123, 255, 0.3); border: 2px solid rgba(0, 123, 255, 0.5); color: white; font-size: 10px; display: flex; justify-content: center; align-items: center; text-align: center; line-height: 1.1; font-family: var(--font-title); user-select: none; -webkit-user-select: none; box-shadow: 0 3px 6px rgba(0,0,0,0.3); transition: transform 0.1s ease, background-color 0.1s ease; backdrop-filter: blur(2px); }
+        .action-button:active { transform: scale(0.92); background-color: rgba(0, 123, 255, 0.5); }
+        #missile-button { background-color: rgba(255, 87, 34, 0.4); border-color: rgba(255, 87, 34, 0.6); font-size: 9px; }
+        #missile-button.on-cooldown { background-color: rgba(108, 117, 125, 0.4); border-color: rgba(108, 117, 125, 0.6); color: #aaa; }
+        #speed-control { display: flex; gap: 10px; }
+        #speed-control .action-button { width: 60px; height: 40px; font-size: 9px; background-color: rgba(108, 117, 125, 0.3); border-color: rgba(108, 117, 125, 0.5); border-radius: 10px; }
+        #button-controls { display: none; flex-direction: column; gap: 5px; align-items: center; }
+        .button-row { display: flex; justify-content: center; gap: 5px; }
+        .move-button { width: 55px; height: 55px; font-size: 18px; font-family: var(--font-title); border-radius: 8px; background-color: rgba(200, 220, 255, 0.2); border: 1px solid rgba(200, 220, 255, 0.3); color: white; }
+        .move-button:active { background-color: rgba(200, 220, 255, 0.4); }
+
+        /* Aim Reticle */
+        #aim-reticle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px; border: 1px solid rgba(255, 255, 255, 0.7); border-radius: 50%; pointer-events: none; z-index: 7; display: none; } /* Hidden by default */
+        #aim-reticle.active { display: block; } /* Show when game runs */
+        #aim-reticle::before, #aim-reticle::after { content: ''; position: absolute; background-color: rgba(255, 255, 255, 0.7); }
+        #aim-reticle::before { width: 1px; height: 8px; left: 50%; top: 0; transform: translateX(-50%); }
+        #aim-reticle::after { width: 8px; height: 1px; top: 50%; left: 0; transform: translateY(-50%); }
+        #aim-reticle span { position: absolute; background-color: rgba(255, 255, 255, 0.7); }
+        #aim-reticle .line-right { width: 8px; height: 1px; top: 50%; right: 0; transform: translateY(-50%); }
+        #aim-reticle .line-bottom { width: 1px; height: 8px; left: 50%; bottom: 0; transform: translateX(-50%); }
+
+         /* Vignettes & Warnings */
+        .overlay-effect { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 8; opacity: 0; transition: opacity 0.4s ease-out; }
+        #vignette-overlay { background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, var(--vignette-color) 95%); }
+        #altitude-warning-overlay { background: radial-gradient(ellipse at center, rgba(255,0,0,0) 65%, var(--altitude-warn-color) 100%); }
+
+        /* Leaderboard Styling */
+        #leaderboard { margin-top: 10px; width: 100%; max-width: 450px; text-align: left; font-size: clamp(0.9em, 3.2vw, 1.1em); background-color: rgba(0, 0, 0, 0.2); padding: 15px; border-radius: 8px; border: 1px solid rgba(0, 229, 255, 0.2); overflow-y: visible; }
+        #leaderboard h2 { text-align: center; margin-bottom: 18px; color: var(--accent-color); font-family: var(--font-title); }
+        #leaderboard ol { list-style-type: none; padding: 0; margin: 0; }
+        #leaderboard li { background-color: rgba(255, 255, 255, 0.05); padding: 8px 12px; margin-bottom: 6px; border-radius: 5px; display: flex; justify-content: space-between; border-left: 3px solid var(--accent-color); }
+        #leaderboard li span:first-child { font-weight: bold; color: #ddd; }
+        #leaderboard li span:last-child { color: var(--accent-color); font-weight: bold; }
+
+        /* Hamburger Menu */
+        #hamburger-button { position: absolute; top: 55px; left: 30px; width: 45px; height: 40px; background-color: rgba(0, 10, 20, 0.7); border: 1px solid var(--accent-color); border-radius: 5px; cursor: pointer; z-index: 11; display: none; flex-direction: column; justify-content: space-around; align-items: center; padding: 7px 5px; box-sizing: border-box; pointer-events: none; backdrop-filter: blur(3px); }
+        #hamburger-button.visible { display: flex; pointer-events: auto; } /* Enable when game runs */
+        #hamburger-button .line { width: 75%; height: 3px; background-color: var(--accent-color); border-radius: 1px; transition: all 0.3s ease; }
+        #hamburger-button.active .line:nth-child(1) { transform: translateY(9px) rotate(45deg); }
+        #hamburger-button.active .line:nth-child(2) { opacity: 0; }
+        #hamburger-button.active .line:nth-child(3) { transform: translateY(-9px) rotate(-45deg); }
+
+        #side-menu { position: absolute; top: 0; left: -300px; width: 260px; height: 100%; background-color: var(--menu-bg); z-index: 12; padding: 70px 25px 25px 25px; box-sizing: border-box; transition: left 0.3s ease-out; display: flex; flex-direction: column; align-items: center; border-right: 2px solid var(--accent-color); pointer-events: none; overflow-y: auto; }
+        #side-menu.active { left: 0; pointer-events: auto; }
+        #side-menu h2 { font-family: var(--font-title); color: var(--accent-color); margin-bottom: 30px; }
+        #side-menu button.game-button { width: 100%; margin-top: 20px; font-size: clamp(1em, 3.8vw, 1.2em); padding: 12px 20px; }
+
+    </style>
+</head>
+<body>
+    <!-- Overlays -->
+    <div id="vignette-overlay" class="overlay-effect"></div>
+    <div id="altitude-warning-overlay" class="overlay-effect"></div>
+
+    <!-- Hamburger Button -->
+    <button id="hamburger-button">
+        <div class="line"></div> <div class="line"></div> <div class="line"></div>
+    </button>
+
+    <!-- Side Menu -->
+    <div id="side-menu">
+        <h2>Paused</h2>
+        <button id="side-resume-button" class="game-button">Resume</button>
+        <button id="side-options-button" class="game-button secondary">Options</button>
+        <button id="side-restart-button" class="game-button">Restart Game</button>
+        <button id="side-quit-button" class="game-button secondary">Quit to Menu</button>
+    </div>
+
+    <!-- Menu Container -->
+    <div id="menu-container"> <!-- Controls visibility of all menus -->
+        <!-- Main Menu -->
+        <div id="main-menu" class="menu-screen active"> <!-- Start active -->
+            <h1>Air Strike Deluxe</h1>
+            <p>Take to the skies and dominate the aerial battlefield!</p>
+            <p>Available Currency: <span id="main-menu-currency">0</span> 🪙</p>
+            <button id="startButton" class="game-button">Start Game</button>
+            <button id="mainShopButton" class="game-button secondary">Upgrades Shop</button>
+            <button id="mainOptionsButton" class="game-button secondary">Options</button>
+            <p style="margin-top: 35px; font-size: 0.8em; color: #aaa;">Controls: Mobile (Touch) / Keyboard (WASD/Arrows, Space, M, Shift, Ctrl)</p>
+        </div>
+
+        <!-- Options Menu -->
+        <div id="options-menu" class="menu-screen">
+            <h1>Options</h1>
+            <div class="options-grid">
+                <label for="difficultySlider">Difficulty:</label>
+                <input type="range" id="difficultySlider" min="0.1" max="1.0" step="0.1" value="0.5">
+                <span id="difficultyValue">0.5</span>
+
+                <label for="sensitivitySlider">Sensitivity:</label>
+                <input type="range" id="sensitivitySlider" min="0.5" max="2.5" step="0.1" value="1.5">
+                <span id="sensitivityValue">1.5</span>
+
+                <label for="invertRollCheckbox">Invert Roll:</label>
+                <input type="checkbox" id="invertRollCheckbox">
+                <span></span>
+
+                <label for="physicsToggleCheckbox">Realistic Physics:</label>
+                <input type="checkbox" id="physicsToggleCheckbox" checked>
+                <span></span>
+
+                <label id="aimAssistLabel" for="aimAssistCheckbox">Aim Assist:</label>
+                <input type="checkbox" id="aimAssistCheckbox">
+                <span></span>
+
+                <label id="aimAssistStrengthLabel" for="aimAssistStrengthSlider">Assist Strength:</label>
+                <input type="range" id="aimAssistStrengthSlider" min="0.0" max="0.3" step="0.01" value="0.1">
+                <span id="aimAssistStrengthValue">0.1</span>
+
+                <label style="grid-column: 1 / 2;">Controls:</label>
+                <div class="control-options" style="grid-column: 2 / 4;">
+                    <label><input type="radio" name="controlScheme" value="joystick" checked> Joystick</label>
+                    <label><input type="radio" name="controlScheme" value="buttons"> Buttons</label>
+                </div>
+            </div>
+            <button id="saveOptionsButton" class="game-button">Save & Back</button>
+            <button id="backToMainButton" class="game-button secondary">Back</button>
+        </div>
+
+        <!-- Shop Menu -->
+        <div id="shop-menu" class="menu-screen">
+            <h1>Upgrades Shop</h1>
+            <p id="shop-currency">Currency: 0 🪙</p>
+            <div id="shop-items-container">
+                <!-- Upgrade items will be populated here by JS -->
+            </div>
+            <button id="backToMainFromShopButton" class="game-button secondary">Back to Main Menu</button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over" class="menu-screen">
+            <h1>Game Over</h1>
+            <p id="reason">You were destroyed!</p>
+            <p>Match Time: <span id="matchTime">0:00</span></p>
+            <p>Score Earned: <span id="scoreEarned">0</span></p>
+             <p>Currency Added: <span id="currencyGained">0</span> 🪙</p>
+            <div id="leaderboard">
+                 <h2>Leaderboard</h2>
+                 <ol id="leaderboard-list"></ol>
+            </div>
+            <button id="restartButton" class="game-button">Restart Game</button>
+            <button id="backToMenuButton" class="game-button secondary">Main Menu</button>
+        </div>
+    </div> <!-- End #menu-container -->
+
+    <!-- In-Game UI -->
+    <div id="ui-container"> <!-- Controlled by .active class -->
+        <div id="top-ui">
+             <div id="match-timer-display">10:00</div> <!-- Display handled by JS -->
+             <div id="stats">
+                 <div id="player-stats">
+                     <div><i>❤️</i><span id="player-health">Health: 100</span></div>
+                     <div><i>🪙</i><span id="player-score">Score: 0</span></div>
+                     <div><i>⚡</i><span id="player-speed">Speed: 0 kph</span></div>
+                 </div>
+                 <div id="enemy-stats-container"></div>
+             </div>
+        </div>
+        <div id="message-box"></div>
+    </div>
+    <div id="aim-reticle"><span></span><span class="line-right"></span><span class="line-bottom"></span></div> <!-- Controlled by .active class -->
+
+    <!-- Mobile Controls -->
+    <div id="mobile-controls"> <!-- Controlled by .active class -->
+        <div id="movement-control-area">
+            <div id="joystick-area" class="touch-area"> <div id="movement-stick" class="touch-stick"></div> </div>
+            <div id="button-controls">
+                <div class="button-row"> <button id="move-up-button" class="action-button move-button">▲</button> </div>
+                <div class="button-row"> <button id="move-left-button" class="action-button move-button">◀</button> <button id="move-down-button" class="action-button move-button">▼</button> <button id="move-right-button" class="action-button move-button">▶</button> </div>
+            </div>
+        </div>
+        <div id="action-buttons">
+            <button id="fire-gun-button" class="action-button">SHOOT</button>
+            <button id="missile-button" class="action-button">MISSILE</button>
+            <div id="speed-control"> <button id="accelerate-button" class="action-button">ACCEL</button> <button id="decelerate-button" class="action-button">DECEL</button> </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Constants ---
+        const PLAYER_COLOR = 0x4169E1; const BULLET_COLOR = 0xFFA500; const ENEMY_BULLET_COLOR = 0xff6347; const MISSILE_COLOR = 0xffffff; const GROUND_COLOR = 0x556B2F; const OBSTACLE_COLOR = 0x708090; const SKY_COLOR = 0x87CEEB; const FOG_COLOR = 0x87CEEB; const FOG_NEAR = 150; const FOG_FAR = 450; const BORDER_COLOR = 0x00e5ff;
+        const PLAYER_GUN_COOLDOWN = 0.15; const PLAYER_COLLISION_RADIUS_SQ = 2.0 * 2.0; const MISSILE_COOLDOWN = 10.0; const MISSILE_SPEED = 75; const MISSILE_TURN_RATE = Math.PI * 1.2; const MISSILE_LIFETIME = 8.0; const MISSILE_DAMAGE = 50; const AI_MISSILE_COOLDOWN = 30.0; const AI_MISSILE_CHANCE = 0.05;
+        const MAX_ENEMIES = 5;
+        const ENEMY_COLLISION_RADIUS_SQ = 2.5 * 2.5; const ENEMY_BASE_SHOOT_COOLDOWN = 0.8; const ENEMY_SHOOT_RANGE_SQ = 130 * 130; const ENEMY_SHOOT_ANGLE = Math.PI / 7; const ENEMY_SHOT_BURST_COUNT = 15; const ENEMY_BURST_COOLDOWN = 4.0; const ENEMY_ENGAGEMENT_RANGE_MIN_SQ = 25 * 25; const ENEMY_ENGAGEMENT_RANGE_MAX_SQ = 160 * 160; const ENEMY_MANEUVER_CHANCE = 0.02; const ENEMY_RESPAWN_DELAY = 30000; const ENEMY_TARGET_CHECK_COOLDOWN = 2.0;
+        const BULLET_BASE_SPEED = 80; const BULLET_BASE_DAMAGE = 10; const BULLET_BASE_LIFETIME = 3.0;
+        const OBSTACLE_COUNT = 20;
+        const OBSTACLE_MIN_SIZE = 5; const OBSTACLE_MAX_SIZE = 18; const OBSTACLE_MAX_HEIGHT = 50;
+        const WORLD_BOUNDS = { x: 200, y: 150, z: 200 }; const GROUND_LEVEL = -10; const OUT_OF_BOUNDS_MARGIN = 50; const LOW_ALTITUDE_WARN_START = 25; const LOW_ALTITUDE_WARN_FULL = 10;
+        const UI_UPDATE_INTERVAL = 0.1; const PHYSICS_GRAVITY_FACTOR = 0.20; const PHYSICS_DRAG_FACTOR = 0.0015; const STALL_SPEED_FACTOR = 0.8; const STALL_RECOVERY_ACCEL_FACTOR = 1.5; const STALL_ALTITUDE_LOSS_RATE = 15;
+        const REGEN_DELAY = 8.0; const REGEN_RATE = 5.0;
+        const G_FORCE_ROLL_FACTOR = 0.8; const G_FORCE_PITCH_FACTOR = 1.2; const G_FORCE_EFFECT_START = 1.5; const G_FORCE_EFFECT_MAX = 2.2; const MAX_G_VIGNETTE = 0.95;
+        const MATCH_DURATION = 10 * 60; const CURRENCY_PER_SCORE = 1; // 1 currency per score point
+        const AIM_ASSIST_CONE_ANGLE = Math.PI / 6;
+        const AIM_ASSIST_MAX_RANGE_SQ = 150 * 150;
+        const MESSAGE_INTERVAL = 10.0; const MESSAGE_DURATION = 3.0;
+        const MAX_UPGRADE_LEVEL = 100;
+
+        const UPGRADE_DATA = {
+             // ID: { name, icon, baseCost, scaleFactor, baseValue (for player stats), perLevelIncrement, maxLevel }
+             health: { name: "Armor Plating", icon: "❤️", baseCost: 50, scaleFactor: 1.18, baseValueRef: 'health', perLevel: 2, maxLevel: MAX_UPGRADE_LEVEL },
+             speed: { name: "Engine Power", icon: "⚡", baseCost: 75, scaleFactor: 1.20, baseValueRef: 'maxSpeed', perLevel: 0.2, maxLevel: MAX_UPGRADE_LEVEL },
+             gunDamage: { name: "Gun Caliber", icon: "💥", baseCost: 100, scaleFactor: 1.22, baseValueRef: null, perLevel: 0.5, maxLevel: MAX_UPGRADE_LEVEL }, // Applied directly to bullet damage
+             bulletLifetime: { name: "Bullet Range", icon: "📏", baseCost: 40, scaleFactor: 1.15, baseValueRef: null, perLevel: 0.05, maxLevel: MAX_UPGRADE_LEVEL }, // Applied directly to bullet lifetime
+             regenRate: { name: "Repair Nanites", icon: "🔧", baseCost: 150, scaleFactor: 1.25, baseValueRef: null, perLevel: 0.2, maxLevel: MAX_UPGRADE_LEVEL }, // Applied to REGEN_RATE
+             missileCooldown: { name: "Missile Loader", icon: "🚀", baseCost: 200, scaleFactor: 1.30, baseValueRef: null, perLevel: -0.05, maxLevel: 50 }, // Reduces cooldown, max level 50
+        };
+
+        const ENEMY_NAMES = ["Viper", "Maverick", "Jester", "Iceman", "Ghost", "Shadow", "Cobra", "Razor", "Ace", "Wolf", "Specter", "Hunter", "Striker", "Blaze", "Raptor", "Phoenix", "Goose", "Slider", "Hollywood", "Stinger"];
+        const CHATTER_HIT_ME = ["I'm hit!", "Taking fire!", "*Radio Static*", "Got tagged!", "Need backup!", "Ouch!", "That one tickled!", "My paint!"]; const CHATTER_HIT_ENEMY = ["Gotcha!", "Scratch one!", "Target hit!", "He's smoking!", "Good hit!", "Direct hit!", "Take that!", "You feel that?"]; const CHATTER_KILL = ["Good kill!", "Down he goes!", "Another one bites the dust!", "Woohoo!", "Tango down!", "Return to base... in pieces!", "He's outta here!", "Splash!"]; const CHATTER_MISSILE_LAUNCH = ["Fox two!", "Missile away!", "Sending a present!", "Eat this!", "Special delivery!"]; const CHATTER_MISSILE_EVADE = ["Missile inbound!", "Break left!", "Chaff! Flares!", "Jinking!", "He fired!", "Whoa, incoming!", "Not today!"]; const CHATTER_ENEMY_MISSILE = ["Enemy missile launch!", "He fired!", "Incoming!", "Missile! Missile!", "Watch out!"]; const CHATTER_LOW_HEALTH = ["Taking heavy damage!", "Need to bug out!", "Armor critical!", "Can't take much more!", "Gonna need some duct tape!", "This crate is falling apart!"]; const CHATTER_MAYDAY = ["Mayday, Mayday!", "Going down!", "Eject! Eject!", "Lost control!", "Tell my CPU I love it!", "It was fun while it lasted!"]; const CHATTER_ACCEL = ["Punch it!", "Full throttle!", "Need more speed!", "Let's go!", "Warp speed!", "Giddy up!"]; const CHATTER_DECEL = ["Hitting the brakes!", "Slowing down!", "Easy does it.", "Whoa there!", "Airbrakes!"]; const CHATTER_STALL = ["Stalling!", "Losing lift!", "Pull up! Pull up!", "Airspeed low!", "Come on baby, fly!", "Gravity wins this round!"]; const CHATTER_GFORCE = ["Feeling the Gs!", "Blacking out!", "Easy on the stick!", "Whoa!", "Making my eyes water!", "My lunch wants out!", "Turning my brain to mush!"]; const CHATTER_NEAR_MISS = ["Too close!", "Watch it!", "Nice flying... idiot.", "That was close!", "Did you see that?!", "Need a change of pants!", "Buy you a drink later?"]; const CHATTER_LOW_ALTITUDE = ["Pull up!", "Getting friendly with the ground!", "Trees!", "Watch the altitude!", "Smell the daisies!", "Mind the rocks!"]; const CHATTER_GENERIC = ["Scanning area.", "Clear skies... for now.", "Anyone got eyes on?", "Engaging.", "Let's dance.", "Feeling good.", "Keep sharp.", "Just cruising.", "What's for dinner?", "Anyone bored?", "Like taking candy from a heavily armed baby."];
+
+        // --- Game State Variables ---
+        let scene, camera, renderer, clock, fog, directionalLight;
+        let playerPlane; let enemies = []; let ground, obstacles = [], worldBorders = []; let playerBullets = [], enemyBullets = [], activeMissiles = []; const projectilesToRemove = new Set();
+        let gameRunning = false; let isPaused = false; let score = 0; let playerHealth = 100; let playerMaxHealth = 100; let playerLastGunFireTime = 0; let playerLastMissileFireTime = -MISSILE_COOLDOWN; let lastUiUpdateTime = 0; let animationFrameId = null; let isPlayerDying = false; let deathFallTimer = 0; let gameStartTime = 0; let lastPlayerDamageTime = -REGEN_DELAY; let lastGForce = 0; let currentAltitude = 0; let isStalled = false; let messageCooldownTimer = 0; let currentMessage = null; let lastNearMissTime = 0;
+        let playerData = {
+            currency: 0,
+            selectedPlaneId: 'fighter_mk1', // Keep plane selection simple for now
+            upgrades: { health: 0, speed: 0, gunDamage: 0, bulletLifetime: 0, regenRate: 0, missileCooldown: 0 } // Store levels
+        };
+        let gameSettings = { difficulty: 0.5, joystickSensitivity: 1.5, invertRoll: false, realisticPhysics: true, controlScheme: 'joystick', aimAssistEnabled: false, aimAssistStrength: 0.1 };
+        let keys = {}; let touchState = { pitch: 0, roll: 0, accelerate: false, decelerate: false, shootingGun: false, shootingMissile: false, moveUp: false, moveDown: false, moveLeft: false, moveRight: false }; let currentPlayerSpeed = 18;
+        let shootSound, explosionSound, hitSound, collisionSound, missileLaunchSound, stallWarningSound, uiClickSound, healthRegenSound, upgradeSound;
+        let menuContainer, hamburgerButton, sideMenu, messageBox, vignetteOverlay, altitudeWarnOverlay, matchTimerDisplay, uiContainer, aimReticle, joystickArea, buttonControlsArea, mobileControlsContainer;
+        let shopCurrencyDisplay, mainMenuCurrencyDisplay; // Specific currency display elements
+
+        // --- Initialization ---
+        function init() {
+            loadSettings(); loadPlayerData();
+            menuContainer = document.getElementById('menu-container');
+            hamburgerButton = document.getElementById('hamburger-button');
+            sideMenu = document.getElementById('side-menu');
+            messageBox = document.getElementById('message-box');
+            vignetteOverlay = document.getElementById('vignette-overlay');
+            altitudeWarnOverlay = document.getElementById('altitude-warning-overlay');
+            matchTimerDisplay = document.getElementById('match-timer-display');
+            uiContainer = document.getElementById('ui-container');
+            aimReticle = document.getElementById('aim-reticle');
+            joystickArea = document.getElementById('joystick-area');
+            buttonControlsArea = document.getElementById('button-controls');
+            mobileControlsContainer = document.getElementById('mobile-controls');
+            shopCurrencyDisplay = document.getElementById('shop-currency');
+            mainMenuCurrencyDisplay = document.getElementById('main-menu-currency');
+
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            if(document.body.contains(renderer.domElement)) { document.body.removeChild(renderer.domElement); }
+            document.body.insertBefore(renderer.domElement, menuContainer); // Insert canvas behind menu
+            clock = new THREE.Clock();
+
+            initSounds();
+            setupLighting();
+            setupEnvironment();
+            setupCamera();
+            setupEventListeners();
+            updateControlSchemeUI();
+            updateCurrencyDisplay(); // Update display initially
+            showScreen('main-menu'); // Start with main menu visible
+        }
+
+        function initSounds() { try { shootSound = new Tone.Synth({ oscillator: { type: "square" }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.05, release: 0.1 }, volume: -18 }).toDestination(); explosionSound = new Tone.NoiseSynth({ noise: { type: "white" }, envelope: { attack: 0.01, decay: 0.4, sustain: 0, release: 0.4 }, volume: -8 }).toDestination(); hitSound = new Tone.MembraneSynth({ pitchDecay: 0.01, octaves: 2, envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.1 }, volume: -12 }).toDestination(); collisionSound = new Tone.MembraneSynth({ pitchDecay: 0.1, octaves: 1, envelope: { attack: 0.01, decay: 0.5, sustain: 0, release: 0.2 }, volume: -5 }).toDestination(); missileLaunchSound = new Tone.NoiseSynth({ noise: { type: "pink" }, filter: { type: "lowpass", frequency: 1000 }, envelope: { attack: 0.05, decay: 0.8, sustain: 0.1, release: 0.5 }, volume: -6 }).toDestination(); stallWarningSound = new Tone.Synth({ oscillator: { type: "sawtooth" }, envelope: { attack: 0.1, decay: 0.2, sustain: 0.3, release: 0.5 }, volume: -10 }).toDestination(); uiClickSound = new Tone.Synth({ oscillator: { type: "triangle" }, envelope: { attack: 0.005, decay: 0.05, sustain: 0, release: 0.1 }, volume: -20 }).toDestination(); healthRegenSound = new Tone.Synth({ oscillator: { type: "sine" }, envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }, volume: -25 }).toDestination(); upgradeSound = new Tone.Synth({ oscillator: { type: "sine" }, frequency: "C5", envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.2 }, volume: -15 }).toDestination(); } catch (e) { console.error("Failed to initialize sounds:", e); const dummySound = { triggerAttackRelease: () => {}, triggerAttack: () => {}, triggerRelease: () => {} }; shootSound = explosionSound = hitSound = collisionSound = missileLaunchSound = stallWarningSound = uiClickSound = healthRegenSound = upgradeSound = dummySound; } }
+
+        // --- Data Persistence ---
+        function saveSettings() { try { localStorage.setItem('airStrikeSettings_v2', JSON.stringify(gameSettings)); } catch (e) { console.error("Failed to save settings:", e); } }
+        function loadSettings() { try { const saved = localStorage.getItem('airStrikeSettings_v2'); if (saved) { const loaded = JSON.parse(saved); gameSettings = { ...gameSettings, ...loaded }; if (gameSettings.aimAssistStrength === undefined) { gameSettings.aimAssistStrength = 0.1; } } } catch (e) { console.error("Failed to load settings:", e); gameSettings = { difficulty: 0.5, joystickSensitivity: 1.5, invertRoll: false, realisticPhysics: true, controlScheme: 'joystick', aimAssistEnabled: false, aimAssistStrength: 0.1 }; } document.getElementById('difficultySlider').value = gameSettings.difficulty; document.getElementById('difficultyValue').textContent = gameSettings.difficulty.toFixed(1); document.getElementById('sensitivitySlider').value = gameSettings.joystickSensitivity; document.getElementById('sensitivityValue').textContent = gameSettings.joystickSensitivity.toFixed(1); document.getElementById('invertRollCheckbox').checked = gameSettings.invertRoll; document.getElementById('physicsToggleCheckbox').checked = gameSettings.realisticPhysics; document.getElementById('aimAssistCheckbox').checked = gameSettings.aimAssistEnabled; document.getElementById('aimAssistStrengthSlider').value = gameSettings.aimAssistStrength; document.getElementById('aimAssistStrengthValue').textContent = gameSettings.aimAssistStrength.toFixed(2); const controlRadio = document.querySelector(`input[name="controlScheme"][value="${gameSettings.controlScheme}"]`); if (controlRadio) controlRadio.checked = true; }
+        function savePlayerData() { try { localStorage.setItem('airStrikePlayerData_v2', JSON.stringify(playerData)); } catch (e) { console.error("Failed to save player data:", e); } }
+        function loadPlayerData() { try { const saved = localStorage.getItem('airStrikePlayerData_v2'); if (saved) { const loadedData = JSON.parse(saved); // Merge upgrades carefully
+                 const defaultUpgrades = { health: 0, speed: 0, gunDamage: 0, bulletLifetime: 0, regenRate: 0, missileCooldown: 0 }; playerData = { ...playerData, ...loadedData, upgrades: { ...defaultUpgrades, ...(loadedData.upgrades || {}) } }; } else { // Ensure default upgrades exist if no save file
+                 playerData.upgrades = { health: 0, speed: 0, gunDamage: 0, bulletLifetime: 0, regenRate: 0, missileCooldown: 0 }; } } catch (e) { console.error("Failed to load player data:", e); playerData.upgrades = { health: 0, speed: 0, gunDamage: 0, bulletLifetime: 0, regenRate: 0, missileCooldown: 0 }; } updateCurrencyDisplay(); }
+
+        // --- Menu Navigation & UI ---
+        function showScreen(screenId) {
+            uiClickSound?.triggerAttackRelease("C5", "32n");
+            menuContainer.classList.remove('hidden'); // Ensure container is potentially visible
+            menuContainer.style.pointerEvents = 'auto'; // Allow clicks within the container
+
+            document.querySelectorAll('#menu-container .menu-screen').forEach(screen => {
+                screen.classList.toggle('active', screen.id === screenId);
+            });
+
+            // Hide game-specific UI when showing a menu screen
+            closeSideMenu();
+            hamburgerButton.classList.remove('visible');
+            mobileControlsContainer.classList.remove('active');
+            uiContainer.classList.remove('active');
+            aimReticle.classList.remove('active');
+            matchTimerDisplay.style.display = 'none';
+            renderer.domElement.style.zIndex = '1'; // Keep canvas behind menus
+            isPaused = false; // Ensure game isn't paused when returning to menu
+
+            if (screenId === 'shop-menu') {
+                populateShop(); // Refresh shop content when shown
+            }
+            if (screenId === 'main-menu') {
+                updateCurrencyDisplay(); // Refresh currency on main menu
+            }
+
+            if (screenId === 'game-over' || screenId === 'main-menu') {
+                 gameRunning = false; // Explicitly stop game logic if going to main/game over
+                 if (animationFrameId) {
+                     cancelAnimationFrame(animationFrameId);
+                     animationFrameId = null;
+                 }
+            }
+        }
+
+        function showMainMenu() { showScreen('main-menu'); }
+        function showOptionsMenu() { loadSettings(); showScreen('options-menu'); }
+        function showShopMenu() { showScreen('shop-menu'); }
+
+        function showGameOverScreen(reason = "You were destroyed!") {
+            gameRunning = false; isPaused = false; isPlayerDying = false;
+            document.getElementById('reason').textContent = reason;
+            vignetteOverlay.style.opacity = 0; altitudeWarnOverlay.style.opacity = 0;
+
+            const elapsedTime = (gameStartTime > 0) ? clock.getElapsedTime() - gameStartTime : 0;
+            const minutes = Math.floor(elapsedTime / 60);
+            const seconds = Math.floor(elapsedTime % 60);
+            document.getElementById('matchTime').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+            const currencyEarned = Math.floor(score * CURRENCY_PER_SCORE);
+            document.getElementById('scoreEarned').textContent = score; // Show score earned this match
+            document.getElementById('currencyGained').textContent = `${currencyEarned} 🪙`; // Show currency gained
+            playerData.currency += currencyEarned; // Add to total currency
+
+            const leaderboardList = document.getElementById('leaderboard-list');
+            leaderboardList.innerHTML = '';
+            const scores = [];
+            scores.push({ name: "You", score: score });
+            enemies.forEach(enemy => { if (enemy && enemy.name) { scores.push({ name: enemy.name, score: enemy.score || 0 }); } });
+            scores.sort((a, b) => b.score - a.score);
+            scores.forEach(entry => { const li = document.createElement('li'); const nameSpan = document.createElement('span'); nameSpan.textContent = entry.name; const scoreSpan = document.createElement('span'); scoreSpan.textContent = entry.score; li.appendChild(nameSpan); li.appendChild(scoreSpan); leaderboardList.appendChild(li); });
+
+            if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; }
+            savePlayerData();
+            updateCurrencyDisplay(); // Update display after saving
+
+            // Delay showing screen slightly to allow cleanup
+            setTimeout(() => {
+                showScreen('game-over'); // This handles hiding game UI
+                // Clean up scene objects after showing screen
+                if (playerPlane && scene.children.includes(playerPlane)) scene.remove(playerPlane);
+                enemies.forEach(enemy => { if (enemy && enemy.mesh && scene.children.includes(enemy.mesh)) scene.remove(enemy.mesh); });
+                [...playerBullets, ...enemyBullets, ...activeMissiles].forEach(p => { if (p && scene.children.includes(p)) scene.remove(p); });
+                playerPlane = null; enemies = []; playerBullets = []; enemyBullets = []; activeMissiles = []; projectilesToRemove.clear();
+            }, 100);
+        }
+
+        function hideMenusAndStartUI() {
+            menuContainer.classList.add('hidden'); // Hide the entire menu container
+            menuContainer.style.pointerEvents = 'none'; // Block pointer events on the hidden container
+            renderer.domElement.style.zIndex = '1';
+            // Show game-specific UI
+            hamburgerButton.classList.add('visible');
+            mobileControlsContainer.classList.add('active');
+            uiContainer.classList.add('active');
+            aimReticle.classList.add('active');
+            matchTimerDisplay.style.display = 'block';
+        }
+
+        function toggleSideMenu() {
+            const isActive = sideMenu.classList.toggle('active');
+            hamburgerButton.classList.toggle('active', isActive);
+            isPaused = isActive;
+            mobileControlsContainer.classList.toggle('active', !isActive && gameRunning); // Hide controls when paused only if game is running
+            aimReticle.classList.toggle('active', !isActive && gameRunning); // Hide reticle when paused only if game is running
+            uiContainer.classList.toggle('active', !isActive && gameRunning); // Hide main UI when paused (optional)
+
+            if (isPaused) {
+                if (clock.running) clock.stop();
+            } else {
+                if (!clock.running) clock.start();
+                 // Ensure game UI is visible when resuming (if game is still running)
+                 if (gameRunning) {
+                     mobileControlsContainer.classList.add('active');
+                     aimReticle.classList.add('active');
+                     uiContainer.classList.add('active');
+                     // Start animation loop if it was stopped
+                     if (!animationFrameId) {
+                         animate();
+                     }
+                 }
+            }
+            uiClickSound?.triggerAttackRelease("E5", "32n");
+        }
+
+        function closeSideMenu() { if (sideMenu.classList.contains('active')) { toggleSideMenu(); } }
+
+        function updateCurrencyDisplay() {
+            const currency = playerData.currency || 0;
+            if(shopCurrencyDisplay) shopCurrencyDisplay.textContent = `Currency: ${currency} 🪙`;
+            if(mainMenuCurrencyDisplay) mainMenuCurrencyDisplay.textContent = `${currency} 🪙`;
+        }
+
+        // --- Shop Logic ---
+        function calculateUpgradeCost(upgradeId, currentLevel) {
+            const data = UPGRADE_DATA[upgradeId];
+            if (!data || currentLevel >= data.maxLevel) return Infinity; // Cannot buy if max level
+            // Formula: baseCost * (scaleFactor ^ currentLevel)
+            return Math.floor(data.baseCost * Math.pow(data.scaleFactor, currentLevel));
+        }
+
+        function populateShop() {
+            const container = document.getElementById('shop-items-container');
+            container.innerHTML = ''; // Clear previous items
+            updateCurrencyDisplay(); // Ensure currency display is up-to-date
+
+            Object.entries(UPGRADE_DATA).forEach(([id, data]) => {
+                const currentLevel = playerData.upgrades[id] || 0;
+                const cost = calculateUpgradeCost(id, currentLevel);
+                const canAfford = playerData.currency >= cost;
+                const isMaxLevel = currentLevel >= data.maxLevel;
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'shop-upgrade-item';
+
+                itemDiv.innerHTML = `
+                    <div class="upgrade-header">
+                        <h3>${data.icon} ${data.name}</h3>
+                        <span class="upgrade-level-display">Level: ${currentLevel} / ${data.maxLevel}</span>
+                    </div>
+                    <div class="upgrade-level-bar-container">
+                        <div class="upgrade-level-bar" style="width: ${Math.min(100, (currentLevel / data.maxLevel) * 100)}%;"></div>
+                    </div>
+                    <div class="upgrade-details">
+                        <span class="upgrade-cost">${isMaxLevel ? 'Max Level' : `Cost: ${cost} 🪙`}</span>
+                        <button class="game-button upgrade-button" data-upgrade-id="${id}" ${isMaxLevel || !canAfford ? 'disabled' : ''}>
+                            ${isMaxLevel ? 'MAXED' : 'Upgrade'}
+                        </button>
+                    </div>
+                `;
+                container.appendChild(itemDiv);
+            });
+
+            // Add event listeners to the new buttons
+            container.querySelectorAll('.upgrade-button').forEach(button => {
+                button.addEventListener('click', handleUpgradeItem);
+            });
+        }
+
+        function handleUpgradeItem(event) {
+            const upgradeId = event.target.dataset.upgradeId;
+            if (!upgradeId || !UPGRADE_DATA[upgradeId]) return;
+
+            const currentLevel = playerData.upgrades[upgradeId] || 0;
+            const data = UPGRADE_DATA[upgradeId];
+
+            if (currentLevel >= data.maxLevel) {
+                showMessage("Already at max level!", 1500);
+                return;
+            }
+
+            const cost = calculateUpgradeCost(upgradeId, currentLevel);
+
+            if (playerData.currency >= cost) {
+                playerData.currency -= cost;
+                playerData.upgrades[upgradeId]++;
+                upgradeSound?.triggerAttackRelease("C6", "16n");
+                savePlayerData();
+                populateShop(); // Refresh the shop UI
+                showMessage(`${data.name} upgraded to Level ${playerData.upgrades[upgradeId]}!`, 1500);
+            } else {
+                showMessage("Not enough currency!", 1500);
+            }
+            uiClickSound?.triggerAttackRelease("A5", "32n"); // Click sound regardless of success
+        }
+
+
+        // --- Game Setup ---
+        function setupLighting() {
+             const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); scene.add(ambientLight);
+             directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+             directionalLight.position.set(80, 150, 100);
+             directionalLight.castShadow = true;
+             directionalLight.shadow.mapSize.width = 512; directionalLight.shadow.mapSize.height = 512;
+             directionalLight.shadow.camera.near = 50; directionalLight.shadow.camera.far = 300;
+             const shadowCamSize = 150;
+             directionalLight.shadow.camera.left = -shadowCamSize; directionalLight.shadow.camera.right = shadowCamSize; directionalLight.shadow.camera.top = shadowCamSize; directionalLight.shadow.camera.bottom = -shadowCamSize;
+             scene.add(directionalLight);
+        }
+        function setupEnvironment() { fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR); scene.fog = fog; scene.background = new THREE.Color(SKY_COLOR); const groundGeometry = new THREE.PlaneGeometry(WORLD_BOUNDS.x * 3, WORLD_BOUNDS.z * 3); const groundMaterial = new THREE.MeshLambertMaterial({ color: GROUND_COLOR, side: THREE.DoubleSide }); ground = new THREE.Mesh(groundGeometry, groundMaterial); ground.rotation.x = -Math.PI / 2; ground.position.y = GROUND_LEVEL; ground.receiveShadow = true; scene.add(ground); obstacles.forEach(obs => scene.remove(obs)); obstacles = []; const obstacleMaterial = new THREE.MeshLambertMaterial({ color: OBSTACLE_COLOR }); const obstacleGeometry = new THREE.BoxGeometry(1, 1, 1); for (let i = 0; i < OBSTACLE_COUNT; i++) { const height = Math.random() * OBSTACLE_MAX_HEIGHT + OBSTACLE_MIN_SIZE; const width = Math.random() * (OBSTACLE_MAX_SIZE - OBSTACLE_MIN_SIZE) + OBSTACLE_MIN_SIZE; const depth = Math.random() * (OBSTACLE_MAX_SIZE - OBSTACLE_MIN_SIZE) + OBSTACLE_MIN_SIZE; const obstacle = new THREE.Mesh(obstacleGeometry, obstacleMaterial); obstacle.scale.set(width, height, depth); obstacle.position.set( (Math.random() - 0.5) * WORLD_BOUNDS.x * 1.8, GROUND_LEVEL + height / 2, (Math.random() - 0.5) * WORLD_BOUNDS.z * 1.8 ); obstacle.castShadow = true; obstacle.receiveShadow = true; obstacle.userData.size = { width, height, depth }; obstacle.userData.collisionRadiusSq = Math.pow(Math.max(width, depth) / 2 + 1.0, 2); scene.add(obstacle); obstacles.push(obstacle); } worldBorders.forEach(border => scene.remove(border)); worldBorders = []; const borderHeight = WORLD_BOUNDS.y * 2.5; const borderMaterial = new THREE.MeshBasicMaterial({ color: BORDER_COLOR, transparent: true, opacity: 0.25, side: THREE.DoubleSide }); const borderW = WORLD_BOUNDS.x * 2; const borderD = WORLD_BOUNDS.z * 2; const borderGeometryX = new THREE.PlaneGeometry(borderD, borderHeight); const borderGeometryZ = new THREE.PlaneGeometry(borderW, borderHeight); const borderPosZ = new THREE.Mesh(borderGeometryZ, borderMaterial); borderPosZ.position.set(0, GROUND_LEVEL + borderHeight / 2, -WORLD_BOUNDS.z); worldBorders.push(borderPosZ); scene.add(borderPosZ); const borderNegZ = new THREE.Mesh(borderGeometryZ, borderMaterial); borderNegZ.position.set(0, GROUND_LEVEL + borderHeight / 2, WORLD_BOUNDS.z); borderNegZ.rotation.y = Math.PI; worldBorders.push(borderNegZ); scene.add(borderNegZ); const borderPosX = new THREE.Mesh(borderGeometryX, borderMaterial); borderPosX.position.set(WORLD_BOUNDS.x, GROUND_LEVEL + borderHeight / 2, 0); borderPosX.rotation.y = -Math.PI / 2; worldBorders.push(borderPosX); scene.add(borderPosX); const borderNegX = new THREE.Mesh(borderGeometryX, borderMaterial); borderNegX.position.set(-WORLD_BOUNDS.x, GROUND_LEVEL + borderHeight / 2, 0); borderNegX.rotation.y = Math.PI / 2; worldBorders.push(borderNegX); scene.add(borderNegX); }
+        function setupPlayer() {
+            if (playerPlane && scene.children.includes(playerPlane)) {
+                scene.remove(playerPlane);
+            }
+            // Using a fixed plane for simplicity now, ignoring playerData.selectedPlaneId
+            const planeData = { // Define base stats directly or use a simplified PLANES_DATA
+                name: 'Fighter Mk.I', health: 100, baseSpeed: 18, maxSpeed: 40, minSpeed: 8,
+                acceleration: 30, deceleration: 25, rotationSpeed: Math.PI * 0.9, gunSlots: 1, stallSpeed: 8 * STALL_SPEED_FACTOR
+            };
+
+            playerPlane = createPlane(PLAYER_COLOR, planeData, true);
+            playerPlane.position.set(0, 10, 50);
+            playerPlane.rotation.set(0, 0, 0);
+
+            // Apply upgrades to initial stats
+            playerMaxHealth = planeData.health + (playerData.upgrades.health * UPGRADE_DATA.health.perLevel);
+            playerHealth = playerMaxHealth; // Start with full health
+
+            currentPlayerSpeed = planeData.baseSpeed; // Speed is managed dynamically
+            playerLastGunFireTime = 0;
+            playerLastMissileFireTime = clock.getElapsedTime() - getMissileCooldown(); // Use upgraded cooldown
+            lastPlayerDamageTime = clock.getElapsedTime() - REGEN_DELAY;
+            isPlayerDying = false;
+            isStalled = false;
+            deathFallTimer = 0;
+            lastGForce = 1.0;
+            isPaused = false;
+            vignetteOverlay.style.opacity = 0;
+            altitudeWarnOverlay.style.opacity = 0;
+            messageCooldownTimer = 3.0;
+            currentMessage = null;
+            scene.add(playerPlane);
+        }
+        function setupEnemies() { enemies.forEach(enemy => { if (enemy && enemy.mesh && scene.children.includes(enemy.mesh)) scene.remove(enemy.mesh); }); enemies = []; const numEnemies = Math.min(MAX_ENEMIES, 3 + Math.floor(Math.random() * 3)); for (let i = 0; i < numEnemies; i++) { spawnEnemy(); } updateEnemyUI(); }
+        function spawnEnemy(indexToReplace = -1) {
+            const enemyPlaneData = { // Simple fixed stats for enemies
+                 name: 'Enemy Fighter', health: 80, baseSpeed: 16, maxSpeed: 35, minSpeed: 7,
+                 acceleration: 25, deceleration: 20, rotationSpeed: Math.PI * 0.8, gunSlots: 1, stallSpeed: 7 * STALL_SPEED_FACTOR
+             };
+            const randomColor = new THREE.Color(Math.random() * 0.8 + 0.1, Math.random() * 0.8 + 0.1, Math.random() * 0.8 + 0.1);
+            const enemyMesh = createPlane(randomColor.getHex(), enemyPlaneData, false);
+            const enemyName = ENEMY_NAMES[Math.floor(Math.random() * ENEMY_NAMES.length)] + ` ${Math.floor(Math.random()*90)+10}`;
+            const enemyState = { mesh: enemyMesh, id: THREE.MathUtils.generateUUID(), name: enemyName, score: 0, health: enemyPlaneData.health * (0.8 + gameSettings.difficulty * 0.4), maxHealth: enemyPlaneData.health * (0.8 + gameSettings.difficulty * 0.4), baseSpeed: enemyPlaneData.baseSpeed * (0.8 + gameSettings.difficulty * 0.2), maxSpeed: enemyPlaneData.maxSpeed * (0.8 + gameSettings.difficulty * 0.2), minSpeed: enemyPlaneData.minSpeed, stallSpeed: enemyPlaneData.stallSpeed, acceleration: enemyPlaneData.acceleration, deceleration: enemyPlaneData.deceleration, rotationSpeed: enemyPlaneData.rotationSpeed * (0.7 + gameSettings.difficulty * 0.5), currentSpeed: enemyPlaneData.baseSpeed * (0.8 + gameSettings.difficulty * 0.2), lastGunFireTime: 0, lastMissileFireTime: clock.getElapsedTime() - AI_MISSILE_COOLDOWN * Math.random(), shotsFiredInBurst: 0, isCoolingDown: false, cooldownEndTime: 0, target: null, targetCheckCooldown: Math.random() * ENEMY_TARGET_CHECK_COOLDOWN, evasionManeuver: null, stats: enemyPlaneData, lastDamageTime: clock.getElapsedTime() - REGEN_DELAY, isStalled: false, };
+            const angle = Math.random() * Math.PI * 2; const spawnDist = 100 + Math.random() * 80; enemyMesh.position.set(Math.cos(angle) * spawnDist, 15 + Math.random() * 20, Math.sin(angle) * spawnDist); if(playerPlane) enemyMesh.lookAt(playerPlane.position); if (indexToReplace !== -1 && enemies[indexToReplace]) { if(enemies[indexToReplace].mesh && scene.children.includes(enemies[indexToReplace].mesh)) { scene.remove(enemies[indexToReplace].mesh); } enemies[indexToReplace] = enemyState; } else { enemies.push(enemyState); } scene.add(enemyMesh); updateEnemyUI();
+        }
+        function setupCamera() { camera.position.set(0, 15, 70); if (playerPlane) { camera.lookAt(playerPlane.position); } else { camera.lookAt(0,0,0); } }
+
+        function setupEventListeners() {
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            window.addEventListener('resize', onWindowResize);
+
+            // --- Menu Buttons ---
+            document.getElementById('startButton').addEventListener('click', attemptStartGame);
+            document.getElementById('mainShopButton').addEventListener('click', showShopMenu);
+            document.getElementById('mainOptionsButton').addEventListener('click', showOptionsMenu);
+            document.getElementById('saveOptionsButton').addEventListener('click', () => {
+                gameSettings.difficulty = parseFloat(document.getElementById('difficultySlider').value);
+                gameSettings.joystickSensitivity = parseFloat(document.getElementById('sensitivitySlider').value);
+                gameSettings.invertRoll = document.getElementById('invertRollCheckbox').checked;
+                gameSettings.realisticPhysics = document.getElementById('physicsToggleCheckbox').checked;
+                gameSettings.aimAssistEnabled = document.getElementById('aimAssistCheckbox').checked;
+                gameSettings.aimAssistStrength = parseFloat(document.getElementById('aimAssistStrengthSlider').value);
+                const selectedControl = document.querySelector('input[name="controlScheme"]:checked');
+                gameSettings.controlScheme = selectedControl ? selectedControl.value : 'joystick';
+                saveSettings();
+                updateControlSchemeUI();
+                showMainMenu();
+                document.getElementById('difficultyValue').textContent = gameSettings.difficulty.toFixed(1);
+                document.getElementById('sensitivityValue').textContent = gameSettings.joystickSensitivity.toFixed(1);
+                document.getElementById('aimAssistStrengthValue').textContent = gameSettings.aimAssistStrength.toFixed(2);
+                uiClickSound?.triggerAttackRelease("C6", "32n");
+            });
+            document.getElementById('difficultySlider').addEventListener('input', (e) => { document.getElementById('difficultyValue').textContent = parseFloat(e.target.value).toFixed(1); });
+            document.getElementById('sensitivitySlider').addEventListener('input', (e) => { document.getElementById('sensitivityValue').textContent = parseFloat(e.target.value).toFixed(1); });
+            document.getElementById('aimAssistStrengthSlider').addEventListener('input', (e) => { document.getElementById('aimAssistStrengthValue').textContent = parseFloat(e.target.value).toFixed(2); });
+            document.getElementById('backToMainButton').addEventListener('click', showMainMenu); // Back from Options
+            document.getElementById('backToMainFromShopButton').addEventListener('click', showMainMenu); // Back from Shop
+            document.getElementById('restartButton').addEventListener('click', restartGame); // Game Over screen
+            document.getElementById('backToMenuButton').addEventListener('click', showMainMenu); // Game Over screen
+
+            // --- Hamburger & Side Menu ---
+            hamburgerButton.addEventListener('click', toggleSideMenu);
+            document.getElementById('side-resume-button').addEventListener('click', () => { closeSideMenu(); });
+            document.getElementById('side-options-button').addEventListener('click', () => { closeSideMenu(); showOptionsMenu(); }); // Go to options from side menu
+            document.getElementById('side-restart-button').addEventListener('click', () => { closeSideMenu(); restartGame(); });
+            document.getElementById('side-quit-button').addEventListener('click', () => { closeSideMenu(); quitToMainMenu(); });
+
+            // --- Touch Controls ---
+            setupTouchControlsListeners();
+        }
+
+        function quitToMainMenu() {
+            gameRunning = false; isPaused = false;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId); animationFrameId = null;
+            // Clean up scene
+            if (playerPlane && scene.children.includes(playerPlane)) scene.remove(playerPlane);
+            enemies.forEach(enemy => { if (enemy && enemy.mesh && scene.children.includes(enemy.mesh)) scene.remove(enemy.mesh); });
+            [...playerBullets, ...enemyBullets, ...activeMissiles].forEach(p => { if (p && scene.children.includes(p)) scene.remove(p); });
+            playerPlane = null; enemies = []; playerBullets = []; enemyBullets = []; activeMissiles = []; projectilesToRemove.clear();
+            showMainMenu(); // Switch UI
+        }
+
+        // --- Object Creation ---
+        function createPlane(color, planeData, isPlayer) { const group = new THREE.Group(); const bodyMat = new THREE.MeshLambertMaterial({ color: color }); const bodyGeom = new THREE.CylinderGeometry(0.6, 0.9, 7, 8); const body = new THREE.Mesh(bodyGeom, bodyMat); body.rotation.x = Math.PI / 2; body.castShadow = true; group.add(body); const wingGeom = new THREE.BoxGeometry(9, 0.25, 2.5); const wings = new THREE.Mesh(wingGeom, bodyMat); wings.position.z = -1.5; wings.castShadow = true; group.add(wings); const tailWingGeom = new THREE.BoxGeometry(3.5, 0.2, 1.2); const tailWing = new THREE.Mesh(tailWingGeom, bodyMat); tailWing.position.z = 3; tailWing.castShadow = true; group.add(tailWing); const stabilizerGeom = new THREE.BoxGeometry(0.25, 1.8, 1.2); const stabilizer = new THREE.Mesh(stabilizerGeom, bodyMat); stabilizer.position.set(0, 0.9, 3); stabilizer.castShadow = true; group.add(stabilizer); const cockpitGeom = new THREE.SphereGeometry(0.7, 8, 6); const cockpitMat = new THREE.MeshLambertMaterial({ color: 0xcccccc }); const cockpit = new THREE.Mesh(cockpitGeom, cockpitMat); cockpit.position.set(0, 0.6, -2); cockpit.castShadow = true; group.add(cockpit); const gunMat = new THREE.MeshLambertMaterial({ color: 0x555555 }); const gunGeom = new THREE.CylinderGeometry(0.18, 0.18, 1.8, 6); gunGeom.rotateX(Math.PI / 2); const centerGun = new THREE.Mesh(gunGeom, gunMat); centerGun.position.set(0, 0, -4); centerGun.castShadow = true; group.add(centerGun); group.userData.gunPoints = [centerGun]; /* Removed wing gun logic for simplicity */ group.userData.planeStats = planeData; group.userData.collisionRadiusSq = PLAYER_COLLISION_RADIUS_SQ; return group; }
+        function createBullet(originPlane, originGunPoint, color = BULLET_COLOR, owner = 'player') {
+            if (!originPlane || !originGunPoint) return null;
+            const bulletGeometry = new THREE.SphereGeometry(0.35, 6, 6);
+            const bulletMaterial = new THREE.MeshBasicMaterial({ color: color });
+            const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+            const worldPosition = new THREE.Vector3();
+            originGunPoint.getWorldPosition(worldPosition);
+            bullet.position.copy(worldPosition);
+            const direction = new THREE.Vector3(0, 0, -1);
+            originPlane.getWorldDirection(direction);
+            direction.negate();
+            bullet.userData.velocity = direction.clone().multiplyScalar(BULLET_BASE_SPEED); // Use base speed
+            bullet.userData.birthTime = clock.getElapsedTime();
+            bullet.userData.lifetime = getBulletLifetime(); // Use upgraded lifetime
+            bullet.userData.damage = getBulletDamage(); // Use upgraded damage
+            bullet.userData.owner = owner;
+            bullet.userData.ownerPlane = originPlane;
+            scene.add(bullet);
+            return bullet;
+        }
+        function createMissile(originPlane, target = null, owner = 'player') { if (!originPlane) return null; const missileGroup = new THREE.Group(); const missileMaterial = new THREE.MeshLambertMaterial({ color: MISSILE_COLOR, emissive: 0xffcc00, emissiveIntensity: 0.6 }); const bodyGeom = new THREE.CylinderGeometry(0.25, 0.3, 3.5, 8); const body = new THREE.Mesh(bodyGeom, missileMaterial); body.rotation.x = Math.PI / 2; missileGroup.add(body); const noseGeom = new THREE.ConeGeometry(0.25, 0.8, 8); const nose = new THREE.Mesh(noseGeom, missileMaterial); nose.position.z = -1.75 - 0.4; nose.rotation.x = Math.PI / 2; missileGroup.add(nose); const finGeom = new THREE.BoxGeometry(0.1, 0.8, 1.2); const finMat = new THREE.MeshLambertMaterial({ color: 0xaaaaaa }); const finPositions = [ { x: 0.3, y: 0, z: 1.2, rotY: 0 }, { x: -0.3, y: 0, z: 1.2, rotY: 0 }, { x: 0, y: 0.3, z: 1.2, rotY: Math.PI / 2 }, { x: 0, y: -0.3, z: 1.2, rotY: Math.PI / 2 } ]; finPositions.forEach(p => { const fin = new THREE.Mesh(finGeom, finMat); fin.position.set(p.x, p.y, p.z); fin.rotation.y = p.rotY; fin.rotation.x = Math.PI / 2; missileGroup.add(fin); }); missileGroup.castShadow = true; const position = new THREE.Vector3(); const direction = new THREE.Vector3(0, 0, -1); originPlane.getWorldPosition(position); originPlane.getWorldDirection(direction); direction.negate(); const launchOffset = direction.clone().multiplyScalar(5.0); missileGroup.position.copy(position).add(launchOffset); missileGroup.quaternion.copy(originPlane.quaternion); missileGroup.userData.velocity = direction.multiplyScalar(MISSILE_SPEED); missileGroup.userData.birthTime = clock.getElapsedTime(); missileGroup.userData.target = target; missileGroup.userData.damage = MISSILE_DAMAGE; missileGroup.userData.owner = owner; missileGroup.userData.ownerPlane = originPlane; scene.add(missileGroup); return missileGroup; }
+
+        // --- Input Handling ---
+        function onKeyDown(event) { const key = event.key.toLowerCase(); keys[key] = true; if(key === 'm') keys.missile = true; if(key === 'shift') keys.accelerate = true; if(key === 'control') keys.decelerate = true; if (key === 'escape' && gameRunning) { toggleSideMenu(); } }
+        function onKeyUp(event) { const key = event.key.toLowerCase(); keys[key] = false; if(key === 'm') keys.missile = false; if(key === 'shift') keys.accelerate = false; if(key === 'control') keys.decelerate = false; }
+        function onWindowResize() { const width = window.innerWidth; const height = window.innerHeight; camera.aspect = width / height; camera.updateProjectionMatrix(); renderer.setSize(width, height); }
+        function updateControlSchemeUI() { const scheme = gameSettings.controlScheme; joystickArea.style.display = scheme === 'joystick' ? 'flex' : 'none'; buttonControlsArea.style.display = scheme === 'buttons' ? 'flex' : 'none'; }
+
+        // Store touch state for joystick
+        let joystickTouchId = null;
+        let joystickRect, joystickCenterX, joystickCenterY, maxJoystickDist;
+        const joystickStick = document.getElementById('movement-stick');
+
+        function setupTouchControlsListeners() {
+            // --- Joystick Listener ---
+            joystickArea.addEventListener('touchstart', (e) => {
+                if (gameSettings.controlScheme !== 'joystick' || joystickTouchId !== null) return;
+                e.preventDefault();
+                if (e.changedTouches.length > 0) {
+                    joystickTouchId = e.changedTouches[0].identifier;
+                    try {
+                        joystickRect = joystickArea.getBoundingClientRect();
+                        joystickCenterX = joystickRect.width / 2;
+                        joystickCenterY = joystickRect.height / 2;
+                        maxJoystickDist = joystickRect.width / 2 - joystickStick.offsetWidth / 2;
+                    } catch(err) { console.error("Joystick bounds error:", err); joystickTouchId = null; return;}
+                    updateJoystickStick(e.changedTouches[0]);
+                }
+            }, { passive: false });
+
+            joystickArea.addEventListener('touchmove', (e) => {
+                if (gameSettings.controlScheme !== 'joystick' || joystickTouchId === null) return;
+                e.preventDefault();
+                for (let touch of e.changedTouches) {
+                    if (touch.identifier === joystickTouchId) {
+                        updateJoystickStick(touch);
+                        break;
+                    }
+                }
+            }, { passive: false });
+
+            const handleJoystickEnd = (e) => {
+                if (gameSettings.controlScheme !== 'joystick' || joystickTouchId === null) return;
+                for (let touch of e.changedTouches) {
+                    if (touch.identifier === joystickTouchId) {
+                        e.preventDefault();
+                        joystickTouchId = null;
+                        joystickStick.style.transform = `translate(0px, 0px)`;
+                        touchState.pitch = 0;
+                        touchState.roll = 0;
+                        break;
+                    }
+                }
+            };
+            joystickArea.addEventListener('touchend', handleJoystickEnd, { passive: false });
+            joystickArea.addEventListener('touchcancel', handleJoystickEnd, { passive: false });
+
+            function updateJoystickStick(touch) {
+                 if (!joystickRect) return; // Guard against missing rect
+                 const touchX = touch.pageX - joystickRect.left - window.scrollX - joystickCenterX;
+                 const touchY = touch.pageY - joystickRect.top - window.scrollY - joystickCenterY;
+                 const distance = Math.min(Math.sqrt(touchX * touchX + touchY * touchY), maxJoystickDist);
+                 const angle = Math.atan2(touchY, touchX);
+                 const stickX = Math.cos(angle) * distance;
+                 const stickY = Math.sin(angle) * distance;
+                 joystickStick.style.transform = `translate(${stickX}px, ${stickY}px)`;
+                 const sensitivity = gameSettings.joystickSensitivity;
+                 const rollInput = (stickX / maxJoystickDist) * sensitivity;
+                 const pitchInput = (-stickY / maxJoystickDist) * sensitivity;
+                 touchState.roll = Math.max(-1, Math.min(1, rollInput));
+                 touchState.pitch = Math.max(-1, Math.min(1, pitchInput));
+            }
+
+            // --- Button Listeners ---
+            setupButtonTouchListener('move-up-button', 'moveUp', 'buttons');
+            setupButtonTouchListener('move-down-button', 'moveDown', 'buttons');
+            setupButtonTouchListener('move-left-button', 'moveLeft', 'buttons');
+            setupButtonTouchListener('move-right-button', 'moveRight', 'buttons');
+            setupButtonTouchListener('fire-gun-button', 'shootingGun');
+            setupButtonTouchListener('missile-button', 'shootingMissile');
+            setupButtonTouchListener('accelerate-button', 'accelerate');
+            setupButtonTouchListener('decelerate-button', 'decelerate');
+        }
+
+        function setupButtonTouchListener(buttonId, stateKey, requiredScheme = null) {
+            const button = document.getElementById(buttonId);
+            if (!button) return;
+            let touchId = null;
+
+            const startHandler = (e) => {
+                 if (requiredScheme && gameSettings.controlScheme !== requiredScheme) return;
+                 e.preventDefault();
+                 if(touchId === null && e.changedTouches.length > 0) {
+                     touchId = e.changedTouches[0].identifier;
+                     touchState[stateKey] = true;
+                     button.style.transform = 'scale(0.92)';
+                 }
+            };
+
+            const endHandler = (e) => {
+                 if (requiredScheme && gameSettings.controlScheme !== requiredScheme) return;
+                 if (touchId === null) return;
+                 for (let touch of e.changedTouches) {
+                     if (touch.identifier === touchId) {
+                         e.preventDefault();
+                         touchId = null;
+                         touchState[stateKey] = false;
+                         button.style.transform = 'scale(1.0)';
+                         break;
+                     }
+                 }
+            };
+
+            button.addEventListener('touchstart', startHandler, { passive: false });
+            button.addEventListener('touchend', endHandler, { passive: false });
+            button.addEventListener('touchcancel', endHandler, { passive: false });
+
+            // Mouse fallback
+            button.addEventListener('mousedown', () => {
+                 if (requiredScheme && gameSettings.controlScheme !== requiredScheme) return;
+                 touchState[stateKey] = true; button.style.transform = 'scale(0.92)';
+            });
+            button.addEventListener('mouseup', () => {
+                 if (requiredScheme && gameSettings.controlScheme !== requiredScheme) return;
+                 touchState[stateKey] = false; button.style.transform = 'scale(1.0)';
+            });
+            button.addEventListener('mouseleave', () => {
+                 if (requiredScheme && gameSettings.controlScheme !== requiredScheme) return;
+                 if (touchState[stateKey]) { // Only reset if mouse leaves while pressed
+                     touchState[stateKey] = false; button.style.transform = 'scale(1.0)';
+                 }
+            });
+        }
+
+        // --- Game Start/End ---
+        function attemptStartGame() {
+             console.log("Attempting to start game...");
+             if (typeof Tone !== 'undefined' && Tone.context.state !== 'running') {
+                 console.log("Tone context not running, attempting to start...");
+                 Tone.start().then(() => {
+                     console.log("Tone context started.");
+                     startGame();
+                 }).catch(e => {
+                     console.error("AudioContext start error:", e);
+                     showMessage("Tap screen to enable audio, then Start");
+                     const startAudio = () => {
+                         Tone.start().then(() => {
+                             showMessage("Audio Enabled!", 1000);
+                             document.body.removeEventListener('click', startAudio);
+                             document.body.removeEventListener('touchend', startAudio);
+                             console.log("Audio enabled via tap.");
+                         }).catch(err => console.error("Retry Audio Error:", err));
+                     };
+                     document.body.addEventListener('click', startAudio, { once: true });
+                     document.body.addEventListener('touchend', startAudio, { once: true });
+                 });
+             } else {
+                 console.log("Tone context already running or not available, starting game directly.");
+                 startGame();
+             }
+        }
+
+        function startGame() {
+            console.log("Starting game...");
+            score = 0; // Reset score for the new match
+            keys = {};
+            touchState = { pitch: 0, roll: 0, accelerate: false, decelerate: false, shootingGun: false, shootingMissile: false, moveUp: false, moveDown: false, moveLeft: false, moveRight: false };
+            projectilesToRemove.clear();
+            [...playerBullets, ...enemyBullets, ...activeMissiles].forEach(p => { if (p && scene.children.includes(p)) scene.remove(p); });
+            playerBullets = []; enemyBullets = []; activeMissiles = [];
+
+            setupPlayer();
+            setupEnemies();
+            updateUI(); // Initial UI update
+            hideMenusAndStartUI(); // Hide menus, show game UI
+
+            gameRunning = true;
+            isPaused = false;
+            gameStartTime = clock.getElapsedTime();
+            lastUiUpdateTime = gameStartTime;
+            messageCooldownTimer = 3.0;
+            lastNearMissTime = gameStartTime;
+
+            if (!clock.running) clock.start();
+            if (!animationFrameId) {
+                console.log("Requesting animation frame...");
+                animate();
+            } else {
+                 console.log("Animation frame already requested.");
+            }
+        }
+
+        function restartGame() {
+            console.log("Restarting game...");
+            gameRunning = false; isPaused = false;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId); animationFrameId = null;
+            // Clean up scene before starting again
+            if (playerPlane && scene.children.includes(playerPlane)) scene.remove(playerPlane);
+            enemies.forEach(enemy => { if (enemy && enemy.mesh && scene.children.includes(enemy.mesh)) scene.remove(enemy.mesh); });
+            [...playerBullets, ...enemyBullets, ...activeMissiles].forEach(p => { if (p && scene.children.includes(p)) scene.remove(p); });
+            playerPlane = null; enemies = []; playerBullets = []; enemyBullets = []; activeMissiles = []; projectilesToRemove.clear();
+            startGame(); // Start a fresh game
+        }
+
+        // --- Game Loop & Updates ---
+        function updateUI() {
+            const now = clock.getElapsedTime();
+            if (!gameRunning && !document.getElementById('game-over').classList.contains('active')) return;
+
+            if (playerPlane && playerHealth > 0) {
+                document.getElementById('player-health').textContent = `Health: ${Math.max(0, Math.round(playerHealth))}/${playerMaxHealth}`;
+                document.getElementById('player-score').textContent = `Score: ${score}`; // Score this match
+                document.getElementById('player-speed').textContent = `Speed: ${Math.round(currentPlayerSpeed * 3.6)} kph`;
+            } else if (!document.getElementById('game-over').classList.contains('active')) {
+                 document.getElementById('player-health').textContent = `Health: 0/${playerMaxHealth}`;
+                 document.getElementById('player-score').textContent = `Score: ${score}`;
+                 document.getElementById('player-speed').textContent = `Speed: 0 kph`;
+            }
+
+            const missileButton = document.getElementById('missile-button');
+            const currentMissileCooldown = getMissileCooldown();
+            const timeSinceLastMissile = now - playerLastMissileFireTime;
+            if (timeSinceLastMissile < currentMissileCooldown) {
+                missileButton.classList.add('on-cooldown');
+                const cooldownLeft = currentMissileCooldown - timeSinceLastMissile;
+                missileButton.textContent = `WAIT ${Math.ceil(cooldownLeft)}s`;
+            } else {
+                missileButton.classList.remove('on-cooldown');
+                missileButton.textContent = 'MISSILE';
+            }
+
+            updateEnemyUI();
+
+            if (gameRunning && !isPaused) {
+                const timeElapsed = now - gameStartTime;
+                const timeLeft = Math.max(0, MATCH_DURATION - timeElapsed);
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = Math.floor(timeLeft % 60);
+                matchTimerDisplay.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }
+            lastUiUpdateTime = now;
+        }
+
+        function updateEnemyUI() { const enemyStatsContainer = document.getElementById('enemy-stats-container'); enemyStatsContainer.innerHTML = ''; enemies.forEach((enemy) => { if (enemy && enemy.health > 0 && enemy.mesh) { const enemyStatDiv = document.createElement('div'); enemyStatDiv.textContent = `${enemy.name}: ${Math.max(0, Math.round(enemy.health))}`; enemyStatDiv.style.color = enemy.health < enemy.maxHealth * 0.3 ? '#ff8888' : '#ffffff'; enemyStatsContainer.appendChild(enemyStatDiv); } }); }
+        function showContextualMessage() { if (isPlayerDying || isPaused) return; let message = null; let priority = -1; if (isStalled && priority < 5) { message = CHATTER_STALL[Math.floor(Math.random() * CHATTER_STALL.length)]; priority = 5; } if (playerHealth < (playerMaxHealth * 0.25) && priority < 4) { message = CHATTER_LOW_HEALTH[Math.floor(Math.random() * CHATTER_LOW_HEALTH.length)]; priority = 4; } if (currentAltitude < LOW_ALTITUDE_WARN_START && priority < 3) { message = CHATTER_LOW_ALTITUDE[Math.floor(Math.random() * CHATTER_LOW_ALTITUDE.length)]; priority = 3; } if (lastGForce > G_FORCE_EFFECT_START + 0.3 && priority < 2) { message = CHATTER_GFORCE[Math.floor(Math.random() * CHATTER_GFORCE.length)]; priority = 2; } if (clock.getElapsedTime() < lastNearMissTime + 5.0 && priority < 1) { message = CHATTER_NEAR_MISS[Math.floor(Math.random() * CHATTER_NEAR_MISS.length)]; priority = 1; } if (message === null && Math.random() < 0.3) { message = CHATTER_GENERIC[Math.floor(Math.random() * CHATTER_GENERIC.length)]; } if (message) { showMessage(message, MESSAGE_DURATION * 1000, true); } }
+        function showMessage(text, duration = 2000, isChatter = false) { if (currentMessage) clearTimeout(currentMessage); messageBox.textContent = text; messageBox.style.display = 'block'; messageBox.style.color = isChatter ? 'var(--accent-color)' : '#fff'; messageBox.style.borderColor = isChatter ? 'var(--accent-color)' : '#888'; currentMessage = setTimeout(() => { messageBox.style.display = 'none'; currentMessage = null; }, duration); }
+
+        // --- Upgrade Getters ---
+        function getPlayerMaxHealth() {
+            const base = (playerPlane?.userData?.planeStats?.health || 100);
+            return base + (playerData.upgrades.health * UPGRADE_DATA.health.perLevel);
+        }
+        function getPlayerMaxSpeed() {
+            const base = (playerPlane?.userData?.planeStats?.maxSpeed || 40);
+            return base + (playerData.upgrades.speed * UPGRADE_DATA.speed.perLevel);
+        }
+        function getBulletDamage() {
+            return BULLET_BASE_DAMAGE + (playerData.upgrades.gunDamage * UPGRADE_DATA.gunDamage.perLevel);
+        }
+        function getBulletLifetime() {
+            return BULLET_BASE_LIFETIME + (playerData.upgrades.bulletLifetime * UPGRADE_DATA.bulletLifetime.perLevel);
+        }
+         function getRegenRate() {
+            return REGEN_RATE + (playerData.upgrades.regenRate * UPGRADE_DATA.regenRate.perLevel);
+        }
+        function getMissileCooldown() {
+            const reduction = playerData.upgrades.missileCooldown * UPGRADE_DATA.missileCooldown.perLevel; // perLevel is negative
+            return Math.max(1.0, MISSILE_COOLDOWN + reduction); // Ensure cooldown doesn't go below 1s
+        }
+
+        // --- Actions ---
+        function triggerShootGun(plane, bulletArray, color, cooldownTracker, owner) {
+            const now = clock.getElapsedTime();
+            const baseCooldown = (owner === 'player') ? PLAYER_GUN_COOLDOWN : ENEMY_BASE_SHOOT_COOLDOWN / (0.5 + gameSettings.difficulty);
+            const gunPoints = plane.userData.gunPoints || [plane];
+            if (now >= cooldownTracker.lastFireTime + baseCooldown) {
+                cooldownTracker.lastFireTime = now;
+                if (owner === 'player') shootSound?.triggerAttackRelease("C5", "16n");
+                gunPoints.forEach(gunPoint => {
+                    const bullet = createBullet(plane, gunPoint, color, owner); // createBullet now uses getBulletDamage() etc.
+                    if (bullet) {
+                        if (owner !== 'player') { // Enemy inaccuracy
+                            const inaccuracy = (1.0 - gameSettings.difficulty) * 0.05;
+                            const bulletSpeed = bullet.userData.velocity.length();
+                            bullet.userData.velocity.x += (Math.random() - 0.5) * inaccuracy * bulletSpeed;
+                            bullet.userData.velocity.y += (Math.random() - 0.5) * inaccuracy * bulletSpeed;
+                            bullet.userData.velocity.z += (Math.random() - 0.5) * inaccuracy * bulletSpeed;
+                            bullet.userData.velocity.normalize().multiplyScalar(bulletSpeed);
+                        }
+                        bulletArray.push(bullet);
+                    }
+                });
+                return true;
+            }
+            return false;
+        }
+        function triggerShootMissile(plane, missileArray, cooldownTracker, cooldownDuration, owner = 'player') {
+            const now = clock.getElapsedTime();
+            if (now >= cooldownTracker.lastFireTime + cooldownDuration) {
+                let closestTarget = null; let minDistSq = Infinity;
+                // Find target (player or closest enemy)
+                if (owner !== 'player' && playerPlane && playerHealth > 0 && !isPlayerDying) {
+                    const distSq = plane.position.distanceToSquared(playerPlane.position);
+                    if (distSq < minDistSq) { minDistSq = distSq; closestTarget = playerPlane; }
+                }
+                enemies.forEach(enemy => {
+                    if (enemy && enemy.health > 0 && enemy.mesh && enemy.mesh !== plane) {
+                        const distSq = plane.position.distanceToSquared(enemy.mesh.position);
+                        if (distSq < minDistSq) { minDistSq = distSq; closestTarget = enemy; }
+                    }
+                });
+                 // Player targeting needs enemy check too
+                 if (owner === 'player') {
+                    enemies.forEach(enemy => {
+                        if (enemy && enemy.health > 0 && enemy.mesh) {
+                            const distSq = plane.position.distanceToSquared(enemy.mesh.position);
+                             if (distSq < ENEMY_SHOOT_RANGE_SQ * 2 && distSq < minDistSq) { // Player missile range check
+                                minDistSq = distSq; closestTarget = enemy;
+                            }
+                        }
+                    });
+                 }
+
+                if (closestTarget) {
+                    cooldownTracker.lastFireTime = now;
+                    if (owner === 'player') { missileLaunchSound?.triggerAttackRelease("1n"); showMessage(CHATTER_MISSILE_LAUNCH[Math.floor(Math.random()*CHATTER_MISSILE_LAUNCH.length)], 2000, true); }
+                    else { missileLaunchSound?.triggerAttackRelease("0.8n", Tone.now(), 0.8); }
+                    const missile = createMissile(plane, closestTarget, owner);
+                    if (missile) missileArray.push(missile);
+                    if (owner === 'player') updateUI(); // Update cooldown display
+                    return true;
+                } else {
+                    if (owner === 'player') showMessage("No target for missile!", 1000);
+                    return false;
+                }
+            }
+            return false;
+        }
+
+        function updatePlayer(delta) {
+            if (!playerPlane) return; const now = clock.getElapsedTime();
+            if (isPlayerDying) { const fallRotationSpeed = Math.PI * 0.3; playerPlane.rotateX(Math.random() * fallRotationSpeed * delta * 0.5); playerPlane.rotateZ((Math.random() - 0.5) * fallRotationSpeed * delta); let fallSpeed = Math.max(10, currentPlayerSpeed * 0.5); playerPlane.position.y -= fallSpeed * delta + 0.5 * 9.8 * deathFallTimer * delta; const direction = new THREE.Vector3(0, 0, -1); direction.applyQuaternion(playerPlane.quaternion); playerPlane.position.add(direction.multiplyScalar(currentPlayerSpeed * 0.8 * delta)); currentPlayerSpeed *= (1 - 2.0 * delta); deathFallTimer += delta; if (playerPlane.position.y <= GROUND_LEVEL + 1.0) { if (gameRunning) { collisionSound?.triggerAttackRelease("A0", "1n"); explosionSound?.triggerAttackRelease("1.5n"); showGameOverScreen("Crashed!"); } } return; }
+            if (playerHealth <= 0 && !isPlayerDying) { isPlayerDying = true; playerHealth = 0; deathFallTimer = 0; showMessage(CHATTER_MAYDAY[Math.floor(Math.random()*CHATTER_MAYDAY.length)], 4000, true); return; }
+
+            const planeData = playerPlane.userData.planeStats; const baseRotationSpeed = planeData.rotationSpeed;
+            const accelerateInput = keys['shift'] || keys['w'] || keys['arrowup'] || touchState.accelerate; const decelerateInput = keys['control'] || keys['s'] || keys['arrowdown'] || touchState.decelerate; const shootGunInput = keys[' '] || touchState.shootingGun; const shootMissileInput = keys['m'] || touchState.shootingMissile;
+            let pitchInput = 0; let rollInput = 0; const sensitivity = gameSettings.joystickSensitivity;
+            if (gameSettings.controlScheme === 'joystick') { const keyRoll = (keys['a'] || keys['arrowleft'] ? 0.6 : 0) + (keys['d'] || keys['arrowright'] ? -0.6 : 0); const keyPitch = (keys['w'] || keys['arrowup'] ? 0.3 : 0) + (keys['s'] || keys['arrowdown'] ? -0.3 : 0); rollInput = keyRoll + touchState.roll; pitchInput = keyPitch + touchState.pitch; } else { rollInput = (keys['a'] || keys['arrowleft'] ? 1 : 0) + (keys['d'] || keys['arrowright'] ? -1 : 0) + (touchState.moveLeft ? 1 : 0) + (touchState.moveRight ? -1 : 0); pitchInput = (keys['w'] || keys['arrowup'] ? 1 : 0) + (keys['s'] || keys['arrowdown'] ? -1 : 0) + (touchState.moveUp ? 1 : 0) + (touchState.moveDown ? -1 : 0); rollInput *= sensitivity * 0.8; pitchInput *= sensitivity * 0.8; }
+            pitchInput = Math.max(-1, Math.min(1, pitchInput)); rollInput = Math.max(-1, Math.min(1, rollInput));
+            const originalRollInput = rollInput;
+            if (gameSettings.invertRoll) { rollInput *= -1; }
+
+            if (shootGunInput) { const gunTracker = { lastFireTime: playerLastGunFireTime }; if (triggerShootGun(playerPlane, playerBullets, BULLET_COLOR, gunTracker, 'player')) { playerLastGunFireTime = gunTracker.lastFireTime; } }
+            if (shootMissileInput) { const missileTracker = { lastFireTime: playerLastMissileFireTime }; const currentMissileCooldown = getMissileCooldown(); if (triggerShootMissile(playerPlane, activeMissiles, missileTracker, currentMissileCooldown, 'player')) { playerLastMissileFireTime = missileTracker.lastFireTime; } }
+
+            let targetSpeed = currentPlayerSpeed;
+            const currentMaxSpeed = getPlayerMaxSpeed(); // Use upgraded max speed
+            const effectiveAccel = isStalled ? planeData.acceleration * STALL_RECOVERY_ACCEL_FACTOR : planeData.acceleration;
+            if (accelerateInput) { targetSpeed = Math.min(currentMaxSpeed, currentPlayerSpeed + effectiveAccel * delta); }
+            if (decelerateInput) { targetSpeed = Math.max(planeData.minSpeed, currentPlayerSpeed - planeData.deceleration * delta); }
+            currentPlayerSpeed = targetSpeed;
+
+            if (gameSettings.realisticPhysics) { const dragForce = PHYSICS_DRAG_FACTOR * currentPlayerSpeed * currentPlayerSpeed; currentPlayerSpeed -= dragForce * delta; const pitchAngle = playerPlane.rotation.x; const gravityEffect = -Math.sin(pitchAngle) * PHYSICS_GRAVITY_FACTOR * 9.8; currentPlayerSpeed += gravityEffect * delta; const currentMinSpeed = planeData.minSpeed; const currentStallSpeed = planeData.stallSpeed; if (!isStalled && currentPlayerSpeed < currentMinSpeed && !accelerateInput) { currentPlayerSpeed -= planeData.deceleration * 0.5 * delta; } if (currentPlayerSpeed < currentStallSpeed && !isStalled) { isStalled = true; stallWarningSound?.triggerAttack("A3"); } else if (isStalled && currentPlayerSpeed >= currentMinSpeed) { isStalled = false; stallWarningSound?.triggerRelease(); } if (isStalled) { playerPlane.position.y -= STALL_ALTITUDE_LOSS_RATE * delta; } currentPlayerSpeed = Math.max(0, Math.min(currentMaxSpeed, currentPlayerSpeed)); } else { currentPlayerSpeed = Math.max(planeData.minSpeed, Math.min(currentMaxSpeed, currentPlayerSpeed)); isStalled = false; }
+
+            const rotationMultiplier = isStalled ? 0.4 : 1.0;
+            playerPlane.rotateX(baseRotationSpeed * pitchInput * delta * rotationMultiplier);
+            playerPlane.rotateZ(baseRotationSpeed * rollInput * delta * rotationMultiplier);
+
+            const direction = new THREE.Vector3(0, 0, -1); direction.applyQuaternion(playerPlane.quaternion); playerPlane.position.add(direction.multiplyScalar(currentPlayerSpeed * delta));
+            playerPlane.position.x = Math.max(-WORLD_BOUNDS.x, Math.min(WORLD_BOUNDS.x, playerPlane.position.x)); playerPlane.position.y = Math.min(WORLD_BOUNDS.y, playerPlane.position.y); playerPlane.position.z = Math.max(-WORLD_BOUNDS.z, Math.min(WORLD_BOUNDS.z, playerPlane.position.z)); currentAltitude = playerPlane.position.y - GROUND_LEVEL;
+
+            // Health Regen
+            playerMaxHealth = getPlayerMaxHealth(); // Update max health in case of upgrades during game (unlikely but safe)
+            const currentRegenRate = getRegenRate();
+            if (now > lastPlayerDamageTime + REGEN_DELAY && playerHealth < playerMaxHealth) {
+                const regenAmount = currentRegenRate * delta;
+                playerHealth = Math.min(playerMaxHealth, playerHealth + regenAmount);
+                if (Math.random() < 0.05) healthRegenSound?.triggerAttackRelease("C6", "64n");
+            }
+
+            const currentG = (Math.abs(originalRollInput) * G_FORCE_ROLL_FACTOR + Math.abs(pitchInput) * G_FORCE_PITCH_FACTOR) + 1.0; lastGForce = THREE.MathUtils.lerp(lastGForce, currentG, 0.1); const gVignetteOpacity = Math.min(MAX_G_VIGNETTE, Math.max(0, (lastGForce - G_FORCE_EFFECT_START) / (G_FORCE_EFFECT_MAX - G_FORCE_EFFECT_START))); vignetteOverlay.style.opacity = gVignetteOpacity;
+            let altWarnOpacity = 0; if (currentAltitude < LOW_ALTITUDE_WARN_START) { altWarnOpacity = 1.0 - Math.max(0, Math.min(1, (currentAltitude - LOW_ALTITUDE_WARN_FULL) / (LOW_ALTITUDE_WARN_START - LOW_ALTITUDE_WARN_FULL))); } altitudeWarnOverlay.style.opacity = altWarnOpacity;
+        }
+
+        function updateEnemies(delta) { const now = clock.getElapsedTime(); enemies.forEach((enemy, index) => { if (!enemy || enemy.health <= 0 || !enemy.mesh) return; const enemyMesh = enemy.mesh; const enemyPos = enemyMesh.position; const planeData = enemy.stats; if (now > enemy.lastDamageTime + REGEN_DELAY && enemy.health < enemy.maxHealth) { const regenAmount = REGEN_RATE * delta * 0.7; enemy.health = Math.min(enemy.maxHealth, enemy.health + regenAmount); } enemy.targetCheckCooldown -= delta; if (enemy.targetCheckCooldown <= 0) { enemy.target = selectEnemyTarget(enemy); enemy.targetCheckCooldown = ENEMY_TARGET_CHECK_COOLDOWN; } if (!enemy.target) return; const targetObj = enemy.target; const targetPos = (targetObj === playerPlane && playerPlane) ? playerPlane.position : targetObj?.mesh?.position; if (!targetPos) { enemy.target = null; return; } const directionToTarget = new THREE.Vector3().subVectors(targetPos, enemyPos); const distanceToTargetSq = directionToTarget.lengthSq(); const distanceToTarget = Math.sqrt(distanceToTargetSq); directionToTarget.normalize(); if (enemy.isCoolingDown) { if (now > enemy.cooldownEndTime) { enemy.isCoolingDown = false; enemy.evasionManeuver = null; } else { performEvasion(enemy, delta, targetPos); return; } } let desiredAction = 'attack'; if (distanceToTargetSq < ENEMY_ENGAGEMENT_RANGE_MIN_SQ) { desiredAction = 'increase_distance'; } else if (distanceToTargetSq > ENEMY_ENGAGEMENT_RANGE_MAX_SQ) { desiredAction = 'close_distance'; } const targetQuaternion = new THREE.Quaternion(); let aimTargetPos = targetPos.clone(); if (desiredAction === 'attack') { const targetVelocity = (targetObj === playerPlane) ? getCurrentPlayerVelocity() : getCurrentEnemyVelocity(targetObj); const timeToIntercept = distanceToTarget / BULLET_BASE_SPEED; aimTargetPos.addScaledVector(targetVelocity, timeToIntercept); } const lookAtMatrix = new THREE.Matrix4().lookAt(enemyPos, aimTargetPos, enemyMesh.up); targetQuaternion.setFromRotationMatrix(lookAtMatrix); let turnRateMultiplier = 1.0; let speedAdjustment = 0; if (desiredAction === 'increase_distance') { const awayDirection = directionToTarget.clone().negate(); const sideDirection = new THREE.Vector3().crossVectors(enemyMesh.up, directionToTarget).normalize(); const evadeDirection = awayDirection.lerp(sideDirection.multiplyScalar(Math.random() < 0.5 ? 1 : -1), 0.5).normalize(); const evadeTargetPos = enemyPos.clone().addScaledVector(evadeDirection, 100); const evadeLookAtMatrix = new THREE.Matrix4().lookAt(enemyPos, evadeTargetPos, enemy.mesh.up); targetQuaternion.setFromRotationMatrix(evadeLookAtMatrix); turnRateMultiplier = 0.7; speedAdjustment = enemy.acceleration * delta; } else if (desiredAction === 'close_distance') { speedAdjustment = enemy.acceleration * delta; } else { speedAdjustment = -enemy.deceleration * delta * 0.3; if (Math.random() < ENEMY_MANEUVER_CHANCE) { performRandomManeuver(enemy, delta); } } enemy.currentSpeed = Math.max(enemy.minSpeed, Math.min(enemy.maxSpeed, enemy.currentSpeed + speedAdjustment)); enemyMesh.quaternion.slerp(targetQuaternion, enemy.rotationSpeed * turnRateMultiplier * delta); const currentForward = new THREE.Vector3(0, 0, -1).applyQuaternion(enemyMesh.quaternion); enemyMesh.position.add(currentForward.multiplyScalar(enemy.currentSpeed * delta)); applySimplePhysics(enemy, delta); const angleToTarget = currentForward.angleTo(directionToTarget); if (desiredAction === 'attack' && angleToTarget < ENEMY_SHOOT_ANGLE && distanceToTargetSq < ENEMY_SHOOT_RANGE_SQ) { const gunTracker = { lastFireTime: enemy.lastGunFireTime }; const enemyBulletDamage = BULLET_BASE_DAMAGE * (0.8 + gameSettings.difficulty * 0.4); // Enemy damage scales with difficulty
+                 const shotFired = triggerShootGun(enemyMesh, enemyBullets, enemyMesh.children[0].material.color.getHex(), gunTracker, enemy); // Pass enemy object as owner
+                 if (shotFired) { enemy.lastGunFireTime = gunTracker.lastFireTime; enemy.shotsFiredInBurst++; if (enemy.shotsFiredInBurst >= ENEMY_SHOT_BURST_COUNT) { enemy.isCoolingDown = true; enemy.cooldownEndTime = now + ENEMY_BURST_COOLDOWN; enemy.shotsFiredInBurst = 0; } } } if (desiredAction === 'attack' && angleToTarget < ENEMY_SHOOT_ANGLE * 1.5 && distanceToTargetSq < ENEMY_SHOOT_RANGE_SQ * 1.2) { const missileTracker = { lastFireTime: enemy.lastMissileFireTime }; if (now > enemy.lastMissileFireTime + AI_MISSILE_COOLDOWN && Math.random() < AI_MISSILE_CHANCE * delta * 60) { if(triggerShootMissile(enemyMesh, activeMissiles, missileTracker, AI_MISSILE_COOLDOWN, enemy)) { enemy.lastMissileFireTime = missileTracker.lastFireTime; } } } checkEnemyBounds(enemy); }); }
+        function selectEnemyTarget(selfEnemy) { let potentialTargets = []; let minDistSq = Infinity; let closestTarget = null; if (playerPlane && playerHealth > 0 && !isPlayerDying) { const distSq = selfEnemy.mesh.position.distanceToSquared(playerPlane.position); potentialTargets.push({ target: playerPlane, distSq: distSq }); if (distSq < minDistSq) { minDistSq = distSq; closestTarget = playerPlane; } } enemies.forEach(otherEnemy => { if (otherEnemy && otherEnemy !== selfEnemy && otherEnemy.health > 0 && otherEnemy.mesh) { const distSq = selfEnemy.mesh.position.distanceToSquared(otherEnemy.mesh.position); potentialTargets.push({ target: otherEnemy, distSq: distSq }); // Allow AI vs AI, but prioritize player if closer
+                 if (distSq < minDistSq && (!closestTarget || closestTarget === playerPlane)) { // Prefer player if equidistant or closer
+                     minDistSq = distSq; closestTarget = otherEnemy; } } }); return closestTarget || playerPlane; // Default to player if no other target found
+        }
+        function getCurrentPlayerVelocity() { if (!playerPlane) return new THREE.Vector3(); const direction = new THREE.Vector3(0, 0, -1); direction.applyQuaternion(playerPlane.quaternion); return direction.multiplyScalar(currentPlayerSpeed); }
+        function getCurrentEnemyVelocity(enemyState) { if (!enemyState || !enemyState.mesh) return new THREE.Vector3(); const direction = new THREE.Vector3(0, 0, -1); direction.applyQuaternion(enemyState.mesh.quaternion); return direction.multiplyScalar(enemyState.currentSpeed); }
+        function performEvasion(enemy, delta, threatPos) { if (!enemy.evasionManeuver) { const directionToThreat = new THREE.Vector3().subVectors(threatPos, enemy.mesh.position).normalize(); const awayDirection = directionToThreat.clone().negate(); const sideDirection = new THREE.Vector3().crossVectors(enemy.mesh.up, directionToThreat).normalize(); const upDownDirection = new THREE.Vector3(0, Math.random() < 0.5 ? 1 : -1, 0); const evadeDirection = awayDirection.lerp(sideDirection.multiplyScalar(Math.random() < 0.5 ? 1 : -1), 0.6).lerp(upDownDirection, 0.3).normalize(); const evadeTargetPos = enemy.mesh.position.clone().addScaledVector(evadeDirection, 150); const lookAtMatrix = new THREE.Matrix4().lookAt(enemy.mesh.position, evadeTargetPos, enemy.mesh.up); enemy.evasionManeuver = new THREE.Quaternion().setFromRotationMatrix(lookAtMatrix); } enemy.mesh.quaternion.slerp(enemy.evasionManeuver, enemy.rotationSpeed * 0.8 * delta); const currentForward = new THREE.Vector3(0, 0, -1).applyQuaternion(enemy.mesh.quaternion); enemy.mesh.position.add(currentForward.multiplyScalar(enemy.currentSpeed * delta)); applySimplePhysics(enemy, delta); checkEnemyBounds(enemy); }
+        function performRandomManeuver(enemy, delta) { const axis = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize(); const angle = Math.PI * 0.1 * delta; const rotQuat = new THREE.Quaternion().setFromAxisAngle(axis, angle); enemy.mesh.quaternion.multiply(rotQuat); }
+        function applySimplePhysics(planeState, delta) { if (!gameSettings.realisticPhysics) { planeState.currentSpeed = Math.max(planeState.minSpeed, Math.min(planeState.maxSpeed, planeState.currentSpeed)); planeState.isStalled = false; return; }; const planeMesh = planeState.mesh; const stats = planeState.stats; const dragForce = PHYSICS_DRAG_FACTOR * planeState.currentSpeed * planeState.currentSpeed; planeState.currentSpeed -= dragForce * delta; const pitchAngle = planeMesh.rotation.x; const gravityEffect = -Math.sin(pitchAngle) * PHYSICS_GRAVITY_FACTOR * 9.8; planeState.currentSpeed += gravityEffect * delta; const currentMinSpeed = stats.minSpeed; const currentStallSpeed = stats.stallSpeed; if (!planeState.isStalled && planeState.currentSpeed < currentMinSpeed) { planeMesh.rotateX(-planeState.rotationSpeed * 0.3 * delta); } if (planeState.currentSpeed < currentStallSpeed && !planeState.isStalled) { planeState.isStalled = true; } else if (planeState.isStalled && planeState.currentSpeed >= currentMinSpeed) { planeState.isStalled = false; } if (planeState.isStalled) { planeMesh.position.y -= STALL_ALTITUDE_LOSS_RATE * 0.7 * delta; } if (planeState.currentSpeed < planeState.baseSpeed && !planeState.isStalled) { planeState.currentSpeed += planeState.acceleration * 0.5 * delta; } planeState.currentSpeed = Math.max(0, Math.min(planeState.maxSpeed, planeState.currentSpeed)); }
+        function checkEnemyBounds(enemy) { const pos = enemy.mesh.position; const buffer = 2.0; pos.x = Math.max(-WORLD_BOUNDS.x, Math.min(WORLD_BOUNDS.x, pos.x)); pos.y = Math.max(GROUND_LEVEL + buffer + (enemy.isStalled ? 0 : 3), Math.min(WORLD_BOUNDS.y, pos.y)); pos.z = Math.max(-WORLD_BOUNDS.z, Math.min(WORLD_BOUNDS.z, pos.z)); }
+
+        const _bulletForward = new THREE.Vector3(); const _dirToTarget = new THREE.Vector3(); const _targetPos = new THREE.Vector3(); const _missileForward = new THREE.Vector3(); const _missileLookAt = new THREE.Matrix4(); const _missileTargetQuat = new THREE.Quaternion();
+
+        function updateProjectiles(delta) {
+            const now = clock.getElapsedTime();
+            projectilesToRemove.clear();
+            const allProjectiles = [...playerBullets, ...enemyBullets, ...activeMissiles];
+
+            allProjectiles.forEach(proj => {
+                if (!proj || projectilesToRemove.has(proj)) return;
+                let removed = false;
+                const ownerObj = proj.userData.owner; // Can be 'player' string or enemy state object
+                const ownerPlaneMesh = proj.userData.ownerPlane;
+
+                // --- Movement & Lifetime ---
+                if (activeMissiles.includes(proj)) { // Missile Logic
+                    const missile = proj;
+                    const targetObj = missile.userData.target; // Can be playerPlane or enemy state object
+                    let targetPos = null;
+                    let targetValid = false;
+
+                    // Check if target is still valid
+                    if (targetObj === playerPlane && playerPlane && playerHealth > 0 && !isPlayerDying) {
+                        targetPos = playerPlane.position; targetValid = true;
+                    } else if (targetObj && targetObj !== playerPlane && targetObj.health > 0 && targetObj.mesh) { // Target is an enemy
+                        targetPos = targetObj.mesh.position; targetValid = true;
+                    }
+
+                    if (targetValid && targetPos) { // Guide missile
+                        const missilePos = missile.position;
+                        _dirToTarget.subVectors(targetPos, missilePos).normalize();
+                        _missileLookAt.lookAt(missilePos, targetPos, missile.up);
+                        _missileTargetQuat.setFromRotationMatrix(_missileLookAt);
+                        missile.quaternion.slerp(_missileTargetQuat, MISSILE_TURN_RATE * delta);
+                        _missileForward.set(0, 0, -1).applyQuaternion(missile.quaternion);
+                        missile.userData.velocity.copy(_missileForward.multiplyScalar(MISSILE_SPEED));
+                    } else { // Target lost or destroyed
+                        missile.userData.target = null; // Continue straight
+                    }
+                    missile.position.add(missile.userData.velocity.clone().multiplyScalar(delta));
+                    if (now > missile.userData.birthTime + MISSILE_LIFETIME) {
+                        projectilesToRemove.add(missile); removed = true;
+                    }
+                } else { // Bullet Logic
+                    const bullet = proj;
+                     const bulletSpeed = bullet.userData.velocity.length(); // Get speed before potential aim assist modifies direction
+
+                    // Aim Assist for Player Bullets
+                    if (ownerObj === 'player' && gameSettings.aimAssistEnabled && gameSettings.aimAssistStrength > 0) {
+                        let closestEnemy = null; let minAngle = AIM_ASSIST_CONE_ANGLE; let minDistSq = AIM_ASSIST_MAX_RANGE_SQ;
+                        _bulletForward.copy(bullet.userData.velocity).normalize();
+                        enemies.forEach(enemy => {
+                            if (enemy && enemy.health > 0 && enemy.mesh) {
+                                _targetPos.copy(enemy.mesh.position);
+                                const distSq = bullet.position.distanceToSquared(_targetPos);
+                                if (distSq < minDistSq) {
+                                    _dirToTarget.subVectors(_targetPos, bullet.position).normalize();
+                                    const angle = _bulletForward.angleTo(_dirToTarget);
+                                    if (angle < minAngle) { minAngle = angle; minDistSq = distSq; closestEnemy = enemy; }
+                                }
+                            }
+                        });
+                        if (closestEnemy) {
+                            _dirToTarget.subVectors(closestEnemy.mesh.position, bullet.position).normalize();
+                            const lerpFactor = gameSettings.aimAssistStrength * 1.5 * delta;
+                            bullet.userData.velocity.lerp(_dirToTarget, lerpFactor).normalize().multiplyScalar(bulletSpeed); // Reapply speed
+                        }
+                    }
+                    bullet.position.add(bullet.userData.velocity.clone().multiplyScalar(delta));
+                    if (now > bullet.userData.birthTime + bullet.userData.lifetime) { // Use bullet's specific lifetime
+                        projectilesToRemove.add(bullet); removed = true;
+                    }
+                }
+
+                // --- Collision Checks ---
+                if (!removed && !isOutOfBounds(proj.position)) {
+                    // Check collision with Player
+                    if (ownerObj !== 'player' && playerPlane && playerHealth > 0 && !isPlayerDying && proj.position.distanceToSquared(playerPlane.position) < PLAYER_COLLISION_RADIUS_SQ) {
+                        projectilesToRemove.add(proj); removed = true;
+                        playerHealth -= proj.userData.damage;
+                        lastPlayerDamageTime = now;
+                        hitSound?.triggerAttackRelease("C4", "16n");
+                        if (playerHealth <= 0 && !isPlayerDying) {
+                            explosionSound?.triggerAttackRelease("1n");
+                            const killerName = (ownerObj && ownerObj.name) ? ownerObj.name : 'Enemy'; // Get killer name if possible
+                            console.log(`Player shot down by ${killerName}`);
+                             if (ownerObj && typeof ownerObj.score === 'number') ownerObj.score += 100; // Award score to AI killer
+                            isPlayerDying = true; deathFallTimer = 0;
+                            showMessage(CHATTER_MAYDAY[Math.floor(Math.random()*CHATTER_MAYDAY.length)], 4000, true);
+                        }
+                    } else { // Check collision with Enemies
+                        enemies.forEach((enemy) => {
+                            if (!removed && enemy && enemy.health > 0 && enemy.mesh && enemy.mesh !== ownerPlaneMesh) { // Don't hit self
+                                if (proj.position.distanceToSquared(enemy.mesh.position) < ENEMY_COLLISION_RADIUS_SQ) {
+                                    projectilesToRemove.add(proj); removed = true;
+                                    enemy.health -= proj.userData.damage;
+                                    enemy.lastDamageTime = now;
+                                    hitSound?.triggerAttackRelease("E4", "16n");
+                                    if (enemy.health <= 0) { // Enemy destroyed
+                                        explosionSound?.triggerAttackRelease("2n");
+                                        const killerName = (ownerObj === 'player') ? "Player" : (ownerObj?.name || "Another Enemy");
+                                        showMessage(`${enemy.name} destroyed by ${killerName}!`, 2000);
+                                        if (ownerObj === 'player') {
+                                            const scoreGain = 50 + (activeMissiles.includes(proj) ? 30 : 10);
+                                            score += scoreGain;
+                                            showMessage(CHATTER_KILL[Math.floor(Math.random()*CHATTER_KILL.length)], 2000, true);
+                                        } else if (ownerObj && typeof ownerObj.score === 'number') {
+                                            ownerObj.score += 100; // AI vs AI score
+                                        }
+                                        if(enemy.mesh) scene.remove(enemy.mesh);
+                                        const index = enemies.indexOf(enemy);
+                                        if(index > -1) enemies[index] = null; // Mark as null for respawn logic
+                                        setTimeout(() => { if(gameRunning && enemies[index] === null) spawnEnemy(index); }, ENEMY_RESPAWN_DELAY);
+                                        updateEnemyUI();
+                                    }
+                                    // Use return inside forEach to skip to next enemy after hit
+                                    return;
+                                }
+                            }
+                        });
+                    }
+
+                    // Check collision with Obstacles
+                    if (!removed) {
+                        for (const obstacle of obstacles) {
+                            const minDistSq = obstacle.userData.collisionRadiusSq + 0.5; // Simple radius check first
+                            if (proj.position.distanceToSquared(obstacle.position) < minDistSq) {
+                                if (checkAABBCollision(proj.position, obstacle)) { // More precise AABB check
+                                    projectilesToRemove.add(proj); removed = true;
+                                    break; // Stop checking obstacles for this projectile
+                                }
+                            }
+                        }
+                    }
+                } else if (isOutOfBounds(proj.position)) { // Projectile went out of bounds
+                    projectilesToRemove.add(proj);
+                }
+            });
+
+            // --- Cleanup Removed Projectiles ---
+            if (projectilesToRemove.size > 0) {
+                projectilesToRemove.forEach(projectile => {
+                    if (projectile && scene.children.includes(projectile)) {
+                        scene.remove(projectile);
+                    }
+                });
+                playerBullets = playerBullets.filter(b => b && !projectilesToRemove.has(b));
+                enemyBullets = enemyBullets.filter(b => b && !projectilesToRemove.has(b));
+                activeMissiles = activeMissiles.filter(m => m && !projectilesToRemove.has(m));
+            }
+        }
+
+        function checkCollisions(delta) { if (!playerPlane || playerHealth <= 0 || isPlayerDying) return; if (playerPlane.position.y <= GROUND_LEVEL + 1.0) { collisionSound?.triggerAttackRelease("A1", "2n"); explosionSound?.triggerAttackRelease("1n"); if (!isPlayerDying) { isPlayerDying = true; deathFallTimer = 0; playerHealth = 0; showMessage(CHATTER_MAYDAY[Math.floor(Math.random()*CHATTER_MAYDAY.length)], 4000, true); } return; } for (const obstacle of obstacles) { const minDistSq = obstacle.userData.collisionRadiusSq + PLAYER_COLLISION_RADIUS_SQ; if (playerPlane.position.distanceToSquared(obstacle.position) < minDistSq) { if (checkAABBCollision(playerPlane.position, obstacle)) { collisionSound?.triggerAttackRelease("C2", "2n"); explosionSound?.triggerAttackRelease("1n"); if (!isPlayerDying) { isPlayerDying = true; deathFallTimer = 0; playerHealth = 0; score -= 20; // Penalty for crash
+                         showMessage(CHATTER_MAYDAY[Math.floor(Math.random()*CHATTER_MAYDAY.length)], 4000, true); } return; } } } enemies.forEach(enemy => { if (enemy && enemy.health > 0 && enemy.mesh) { const collisionDistSq = PLAYER_COLLISION_RADIUS_SQ + ENEMY_COLLISION_RADIUS_SQ; const nearMissDistSq = collisionDistSq * 3.0; const currentDistSq = playerPlane.position.distanceToSquared(enemy.mesh.position); if (currentDistSq < collisionDistSq) { collisionSound?.triggerAttackRelease("D2", "1n"); explosionSound?.triggerAttackRelease("1n"); if (!isPlayerDying) { isPlayerDying = true; deathFallTimer = 0; playerHealth = 0; score -= 50; // Penalty for crash
+                         showMessage(CHATTER_MAYDAY[Math.floor(Math.random()*CHATTER_MAYDAY.length)], 4000, true); } enemy.health = 0; // Destroy enemy too
+                         if(enemy.mesh) scene.remove(enemy.mesh); const index = enemies.indexOf(enemy); if(index > -1) { enemies[index] = null; setTimeout(() => { if(gameRunning && enemies[index] === null) spawnEnemy(index); }, ENEMY_RESPAWN_DELAY); } updateEnemyUI(); return; } else if (currentDistSq < nearMissDistSq) { lastNearMissTime = clock.getElapsedTime(); } } }); }
+        function checkAABBCollision(point, boxMesh) { if (!boxMesh?.userData?.size) return false; const boxPos = boxMesh.position; const boxSize = boxMesh.userData.size; const minX = boxPos.x - boxSize.width / 2; const maxX = boxPos.x + boxSize.width / 2; const minY = boxPos.y - boxSize.height / 2; const maxY = boxPos.y + boxSize.height / 2; const minZ = boxPos.z - boxSize.depth / 2; const maxZ = boxPos.z + boxSize.depth / 2; return (point.x >= minX && point.x <= maxX && point.y >= minY && point.y <= maxY && point.z >= minZ && point.z <= maxZ); }
+        function isOutOfBounds(position) { return Math.abs(position.x) > WORLD_BOUNDS.x + OUT_OF_BOUNDS_MARGIN || position.y < GROUND_LEVEL - OUT_OF_BOUNDS_MARGIN || position.y > WORLD_BOUNDS.y + OUT_OF_BOUNDS_MARGIN || Math.abs(position.z) > WORLD_BOUNDS.z + OUT_OF_BOUNDS_MARGIN; }
+        function updateCamera(delta) { if (!playerPlane) return; const cameraOffset = new THREE.Vector3(0, isPlayerDying ? 12 : 7, isPlayerDying ? 25 : 20); const cameraTargetPosition = cameraOffset.applyQuaternion(playerPlane.quaternion); cameraTargetPosition.add(playerPlane.position); const lookAtTargetPosition = playerPlane.position.clone(); const lookAtOffset = new THREE.Vector3(0, 2, isPlayerDying ? -10 : -40); lookAtOffset.applyQuaternion(playerPlane.quaternion); lookAtTargetPosition.add(lookAtOffset); const lerpFactor = isPlayerDying ? 0.02 : 0.08; camera.position.lerp(cameraTargetPosition, lerpFactor); camera.lookAt(lookAtTargetPosition); }
+
+        function animate() {
+            animationFrameId = requestAnimationFrame(animate); // Request next frame immediately
+
+            // Stop loop if game isn't running and not paused (e.g., back in menu)
+            if (!gameRunning && !isPaused) {
+                console.log("Animation loop stopping: game not running and not paused.");
+                animationFrameId = null; // Ensure it's nullified
+                return;
+            }
+
+            const delta = isPaused ? 0 : Math.min(clock.getDelta(), 0.05); // Cap delta time
+            const now = clock.getElapsedTime();
+
+            if (!isPaused && gameRunning) { // Only run updates if not paused and game is logically running
+                updatePlayer(delta);
+                updateEnemies(delta); // Update enemies even if player is dying (they might shoot wreckage)
+                checkCollisions(delta); // Check collisions even if player is dying (e.g., wreckage hitting ground)
+                updateProjectiles(delta);
+                updateCamera(delta);
+
+                messageCooldownTimer -= delta;
+                if (messageCooldownTimer <= 0) {
+                    showContextualMessage();
+                    messageCooldownTimer = MESSAGE_INTERVAL + (Math.random() * 4 - 2);
+                }
+
+                // Check for match end only if running and player not already dying
+                if (!isPlayerDying && (now - gameStartTime >= MATCH_DURATION)) {
+                     showGameOverScreen("Match Timer Ended");
+                    // gameRunning will be set to false by showGameOverScreen, stopping further updates in next frame check
+                }
+            } else if (isPaused) {
+                 // Paused state logic (if any needed beyond stopping updates)
+            }
+
+            // Update UI periodically
+            if (now > lastUiUpdateTime + UI_UPDATE_INTERVAL) {
+                updateUI();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // --- Start ---
+        window.onload = function() {
+            console.log("Window loaded, initializing game...");
+            init();
+        };
+    </script>
+</body>
+</html>
